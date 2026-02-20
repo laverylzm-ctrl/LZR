@@ -2581,12 +2581,12 @@ local function CreateTab(name, emoji, id)
     return page
 end
 
-local P1 = CreateTab("Avatar Fix", "👤", 1)
-local P2 = CreateTab("Stable Outfit", "👚", 2)
-local P3 = CreateTab("Anim Stable", "🏃", 3)
-local P4 = CreateTab("Body Editor", "🧸", 4)
-local P5 = CreateTab("Nebula Hybrid", "🌌", 5)
-local P6 = CreateTab("Master Control", "⚙️", 6)
+local P1 = CreateTab("", "👤", 1)
+local P2 = CreateTab("", "👚", 2)
+local P3 = CreateTab("", "🏃", 3)
+local P4 = CreateTab("", "🧸", 4)
+local P5 = CreateTab("", "🌌", 5)
+local P6 = CreateTab("", "⚙️", 6)
 
 -- GLOBAL RESET HANDLERS
 local MasterReset = {}
@@ -2628,11 +2628,12 @@ task.spawn(function()
     end)
 
     local Title = Instance.new("TextLabel", Main)
-    Title.Size = UDim2.new(1, 0, 0, 30); Title.Text = "AVATAR CHANGER"; Title.TextColor3 = Color3.new(1, 1, 1); Title.Font = Enum.Font.SourceSansBold; Title.BackgroundTransparency = 1
+    Title.Size = UDim2.new(1, 0, 0, 30); Title.Text = "COPY AVATAR"; Title.TextColor3 = Color3.new(1, 1, 1); Title.Font = Enum.Font.SourceSansBold; Title.BackgroundTransparency = 1
 
     local Input = Instance.new("TextBox", Main)
     Input.Size = UDim2.new(1, 0, 0, 35); Input.Position = UDim2.new(0, 0, 0, 40); Input.PlaceholderText = "Username / UserID"; Input.BackgroundColor3 = Color3.fromRGB(40, 40, 40); Input.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", Input)
-
+	Input.Text = "Input Username / UserID";
+	
     local ApplyBtn = Instance.new("TextButton", Main)
     ApplyBtn.Size = UDim2.new(1, 0, 0, 35); ApplyBtn.Position = UDim2.new(0, 0, 0, 85); ApplyBtn.Text = "USE AVATAR"; ApplyBtn.BackgroundColor3 = Color3.fromRGB(60, 150, 60); ApplyBtn.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", ApplyBtn)
 
@@ -2780,13 +2781,14 @@ task.spawn(function()
     Tab2_ApplyFunc = ChangeAvatarManual
 
     local Title = Instance.new("TextLabel", Main)
-    Title.Size = UDim2.new(1, 0, 0, 30); Title.Text = "STABLE OUTFIT V7.2"; Title.TextColor3 = Color3.new(1, 1, 1); Title.Font = Enum.Font.SourceSansBold; Title.BackgroundTransparency = 1
+    Title.Size = UDim2.new(1, 0, 0, 30); Title.Text = "COPY OUTFIT"; Title.TextColor3 = Color3.new(1, 1, 1); Title.Font = Enum.Font.SourceSansBold; Title.BackgroundTransparency = 1
 
     local Input = Instance.new("TextBox", Main)
     Input.Size = UDim2.new(1, 0, 0, 35); Input.Position = UDim2.new(0, 0, 0, 40); Input.PlaceholderText = "ID or Username..."; Input.BackgroundColor3 = Color3.fromRGB(30, 30, 30); Input.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", Input)
+	Input.Text = "Input Username / UserID";
 
     local Apply = Instance.new("TextButton", Main)
-    Apply.Size = UDim2.new(1, 0, 0, 35); Apply.Position = UDim2.new(0, 0, 0, 85); Apply.Text = "APPLY AVATAR"; Apply.BackgroundColor3 = Color3.fromRGB(255, 100, 110); Apply.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", Apply)
+    Apply.Size = UDim2.new(1, 0, 0, 35); Apply.Position = UDim2.new(0, 0, 0, 85); Apply.Text = "USE OUTFIT"; Apply.BackgroundColor3 = Color3.fromRGB(255, 100, 110); Apply.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", Apply)
 
     local Reset = Instance.new("TextButton", Main)
     Reset.Size = UDim2.new(1, 0, 0, 35); Reset.Position = UDim2.new(0, 0, 0, 130); Reset.Text = "RESET TO ORIGINAL"; Reset.BackgroundColor3 = Color3.fromRGB(45, 45, 45); Reset.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", Reset)
@@ -2899,13 +2901,13 @@ task.spawn(function()
     -- UI Title
     local Title = Instance.new("TextLabel", Main)
     Title.Size = UDim2.new(1, 0, 0, 30)
-    Title.Text = "ANIMATION STABLE"
+    Title.Text = "STEAL ANIMATION"
     Title.TextColor3 = Color3.new(1, 1, 1); Title.Font = Enum.Font.SourceSansBold; Title.BackgroundTransparency = 1
 
     -- Button Use/Copy (FUNGSI GANDA)
     local UseBtn = Instance.new("TextButton", Main)
     UseBtn.Size = UDim2.new(1, 0, 0, 35); UseBtn.Position = UDim2.new(0, 0, 0, 40)
-    UseBtn.Text = "USE ANIMATION (SYSTEM: OFF)"
+    UseBtn.Text = "STEAL ANIMATION (SYSTEM: OFF)"
     UseBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0); UseBtn.TextColor3 = Color3.new(1, 1, 1)
     Instance.new("UICorner", UseBtn)
 
@@ -2921,6 +2923,7 @@ task.spawn(function()
     NameBox.Size = UDim2.new(1, 0, 0, 35); NameBox.Position = UDim2.new(0, 0, 0, 130)
     NameBox.PlaceholderText = "Name for Animation..."; NameBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40); NameBox.TextColor3 = Color3.new(1, 1, 1)
     Instance.new("UICorner", NameBox)
+	NameBox.Text = "Input Name for Save Animation..."
 
     local SaveBtn = Instance.new("TextButton", Main)
     SaveBtn.Size = UDim2.new(1, 0, 0, 35); SaveBtn.Position = UDim2.new(0, 0, 0, 175)
@@ -3087,7 +3090,7 @@ task.spawn(function()
         b.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         b.TextColor3 = Color3.new(1, 1, 1)
         b.Text = ""
-        b.PlaceholderText = "Enter ID..."
+        b.PlaceholderText = "Input ID..."
         b.Font = Enum.Font.SourceSans
         Instance.new("UICorner", b)
         inputs[propertyName] = b
@@ -3128,6 +3131,7 @@ task.spawn(function()
     NameBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     NameBox.TextColor3 = Color3.new(1, 1, 1)
     Instance.new("UICorner", NameBox)
+	NameBox.Text = "Input Name for Save Body Editor..."
 
     -- 6. Tombol SAVE TO LIST
     local SaveBtn = Instance.new("TextButton", Main)
@@ -3268,7 +3272,7 @@ task.spawn(function()
     local Title = Instance.new("TextLabel", Main)
     Title.Size = UDim2.new(1, 0, 0, 30)
     Title.Position = UDim2.new(0, 0, 0, 0)
-    Title.Text = "AVATAR & PRESETS"
+    Title.Text = "OUTFIT EDITOR"
     Title.TextColor3 = Color3.new(1, 1, 1)
     Title.Font = Enum.Font.SourceSansBold
     Title.TextSize = 18
@@ -3319,7 +3323,8 @@ task.spawn(function()
     for i = 1, 20 do
         local Box = Instance.new("TextBox", Scroll)
         Box.Size = UDim2.new(1, -10, 0, 28)
-        Box.PlaceholderText = "Asset ID Slot "..i
+		Box.Text = "Input Asset ID ... "..i
+        Box.PlaceholderText = "Asset ID... "..i
         Box.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
         Box.TextColor3 = Color3.new(1, 1, 1)
         Box.Font = Enum.Font.SourceSans
@@ -3343,14 +3348,15 @@ task.spawn(function()
     end
 
     -- 3. TOMBOL UTAMA
-    local VisualBtn = ActionBtn("USE AVATAR: OFF", Color3.fromRGB(150, 0, 0), UDim2.new(0, 0, 0, 160))
+    local VisualBtn = ActionBtn("USE OUTFIT: OFF", Color3.fromRGB(150, 0, 0), UDim2.new(0, 0, 0, 160))
     local FlushBtn = ActionBtn("FLUSH", Color3.fromRGB(120, 60, 0), UDim2.new(0, 0, 0, 197), UDim2.new(0.48, 0, 0, 32))
-    local ResetBtn = ActionBtn("RESTORE", Color3.fromRGB(0, 120, 60), UDim2.new(0.52, 0, 0, 197), UDim2.new(0.48, 0, 0, 32))
+    local ResetBtn = ActionBtn("RESET TO ORIGINAL", Color3.fromRGB(0, 120, 60), UDim2.new(0.52, 0, 0, 197), UDim2.new(0.48, 0, 0, 32))
 
     -- 4. INPUT PRESET NAME & SAVE
     local PresetNameBox = Instance.new("TextBox", Main)
     PresetNameBox.Size = UDim2.new(1, 0, 0, 32)
     PresetNameBox.Position = UDim2.new(0, 0, 0, 234)
+	PresetNameBox.Text = "Input Name for Save Outfit Editor..."
     PresetNameBox.PlaceholderText = "Enter Preset Name..."
     PresetNameBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     PresetNameBox.TextColor3 = Color3.new(1, 1, 1)
@@ -3384,7 +3390,7 @@ task.spawn(function()
         
         -- Jalankan Visual
         activeVisual = true
-        VisualBtn.Text = "USE AVATAR: ON"
+        VisualBtn.Text = "USE OUTFIT: ON"
         VisualBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 50)
         
         Storage:ClearAllChildren()
@@ -3403,7 +3409,7 @@ task.spawn(function()
 
     local function toggle(state)
         activeVisual = state
-        VisualBtn.Text = activeVisual and "USE AVATAR: ON" or "USE AVATAR: OFF"
+        VisualBtn.Text = activeVisual and "USE OUTFIT: ON" or "USE OUTFIT: OFF"
         VisualBtn.BackgroundColor3 = activeVisual and Color3.fromRGB(0, 150, 50) or Color3.fromRGB(150, 0, 0)
         
         if activeVisual then
@@ -3542,7 +3548,7 @@ task.spawn(function()
         
         local btn = Instance.new("TextButton", frame)
         btn.Size = UDim2.new(1, 0, 1, 0)
-        btn.Text = title .. ": [KOSONG]"
+        btn.Text = title .. ": [NOTHING]"
         btn.TextColor3 = Color3.new(1, 1, 1)
         btn.BackgroundTransparency = 1
         btn.Font = Enum.Font.GothamBold
@@ -3588,11 +3594,11 @@ task.spawn(function()
     end
 
     -- Inisialisasi Dropdown
-    CreateDropdown("Tab 1", "XenoOutfit_Saves.json", 1)
-    CreateDropdown("Tab 2", "StableOutfit_Saves.json", 3)
-    CreateDropdown("Tab 3", "XenoVisual_V16.json", 5)
-    CreateDropdown("Tab 4", "XenoBody_Saves.json", 7)
-    CreateDropdown("Tab 5", "XenoPresets_V16.json", 9)
+    CreateDropdown("Choose Avatar", "XenoOutfit_Saves.json", 1)
+    CreateDropdown("Choose Outfit", "StableOutfit_Saves.json", 3)
+    CreateDropdown("Choose Animation", "XenoVisual_V16.json", 5)
+    CreateDropdown("Choose Body", "XenoBody_Saves.json", 7)
+    CreateDropdown("Choose Outfit Editor", "XenoPresets_V16.json", 9)
 
     -- FUNGSI EKSEKUSI (URUTAN KHUSUS: 1-4-3-2-5)
     local function RunMaster()
@@ -3749,14 +3755,14 @@ task.spawn(function()
     -- 1. TOMBOL JALANKAN
     local RunAll = Instance.new("TextButton", Scroll)
     RunAll.LayoutOrder = 20; RunAll.Size = UDim2.new(0.9, 0, 0, 45)
-    RunAll.Text = "⚡ JALANKAN KOMBINASI"; RunAll.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+    RunAll.Text = "USE ALL"; RunAll.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
     RunAll.TextColor3 = Color3.new(1, 1, 1); RunAll.Font = Enum.Font.GothamBold; Instance.new("UICorner", RunAll)
     RunAll.MouseButton1Click:Connect(RunMaster)
 
     -- 2. TOMBOL RESET ALL (PERMINTAAN ANDA)
     local ResetAll = Instance.new("TextButton", Scroll)
     ResetAll.LayoutOrder = 21; ResetAll.Size = UDim2.new(0.9, 0, 0, 45)
-    ResetAll.Text = "⚠️ RESET ALL TO ORIGINAL"
+    ResetAll.Text = "RESET ALL TO ORIGINAL"
     ResetAll.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
     ResetAll.TextColor3 = Color3.new(1, 1, 1); ResetAll.Font = Enum.Font.GothamBold; Instance.new("UICorner", ResetAll)
     
@@ -3785,7 +3791,7 @@ task.spawn(function()
             -- Membersihkan UI Dropdown di Tab 6 Master Control
             for key, btn in pairs(DropdownButtons) do
                 Selection[key] = nil
-                btn.Text = key:gsub("Tab", "Tab ") .. ": [KOSONG]"
+                btn.Text = key:gsub("Tab", "Tab ") .. ": [NOTHING]"
             end
             
             warn("Xeno Master: All Systems Reset to Original!")
@@ -3795,12 +3801,13 @@ task.spawn(function()
     -- 3. BAGIAN SAVE COMBO
     local NameBox = Instance.new("TextBox", Scroll)
     NameBox.LayoutOrder = 25; NameBox.Size = UDim2.new(0.9, 0, 0, 35)
+	NameBox.Text = "Input Name to Save All Selected..."
     NameBox.PlaceholderText = "Nama Combo Baru..."; NameBox.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
     NameBox.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", NameBox)
 
     local SaveCombo = Instance.new("TextButton", Scroll)
     SaveCombo.LayoutOrder = 26; SaveCombo.Size = UDim2.new(0.9, 0, 0, 40)
-    SaveCombo.Text = "💾 SIMPAN COMBO"; SaveCombo.BackgroundColor3 = Color3.fromRGB(80, 0, 180)
+    SaveCombo.Text = "SAVE TO LIST"; SaveCombo.BackgroundColor3 = Color3.fromRGB(80, 0, 180)
     SaveCombo.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", SaveCombo)
 
     local ComboContainer = Instance.new("Frame", Scroll)
@@ -3826,7 +3833,7 @@ task.spawn(function()
         end
         -- Reset Teks UI Dropdown agar terlihat bersih sebelum load
         for key, btn in pairs(DropdownButtons) do
-            btn.Text = key:gsub("Tab", "Tab ") .. ": [KOSONG]"
+            btn.Text = key:gsub("Tab", "Tab ") .. ": [NOTHING]"
         end
     end
 
@@ -3855,7 +3862,7 @@ task.spawn(function()
                     if Selection[key] then 
                         btn.Text = key:gsub("Tab", "Tab ") .. ": " .. tostring(Selection[key].Name)
                     else
-                        btn.Text = key:gsub("Tab", "Tab ") .. ": [KOSONG]"
+                        btn.Text = key:gsub("Tab", "Tab ") .. ": [NOTHING]"
                     end
                 end
                 
