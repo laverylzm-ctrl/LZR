@@ -2492,34 +2492,44 @@ local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
-local RunService = game:GetService("RunService") -- Tambahan Service
-
--- [[ LOGIKA ANTI-BODY BLOCK (OTOMATIS AKTIF) ]] --
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
-task.spawn(function()
-    RunService.Stepped:Connect(function()
-        pcall(function()
-            local myChar = LocalPlayer.Character
-            if not myChar then return end
-            for _, otherPlayer in pairs(Players:GetPlayers()) do
-                if otherPlayer ~= LocalPlayer and otherPlayer.Character then
-                    for _, part in pairs(otherPlayer.Character:GetDescendants()) do
-                        if part:IsA("BasePart") and part.CanCollide == true then
-                            part.CanCollide = false
-                        end
-                    end
-                end
-            end
-        end)
-    end)
-end)
 
--- Anti Duplikasi GUI
+-- Anti Duplikasi GUI Utama
 if CoreGui:FindFirstChild("XenoUltimate_V2") then CoreGui.XenoUltimate_V2:Destroy() end
+-- Anti Duplikasi GUI Anti-Block (Jika ada versi lama)
+if CoreGui:FindFirstChild("AntiBlockOptimized") then CoreGui.AntiBlockOptimized:Destroy() end
 
 local ScreenGui = Instance.new("ScreenGui", CoreGui)
 ScreenGui.Name = "XenoUltimate_V2"
 ScreenGui.ResetOnSpawn = false
+
+-------------------------------------------------------------------
+-- [ BAGIAN A: LOGIKA ANTI-BLOCK & ANTI-LAG (AUTO ACTIVE) ]
+-------------------------------------------------------------------
+-- Kita taruh di atas agar sistem langsung memprosesnya
+local function runFastAntiBlock()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local char = player.Character
+            -- Optimasi Anti-Lag: Hanya cek part utama, bukan aksesoris
+            for _, part in pairs(char:GetChildren()) do
+                if part:IsA("BasePart") and part.CanCollide == true then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end
+end
+
+-- Menjalankan Anti-Block secara otomatis di background
+task.spawn(function()
+    print("Anti-Body Block (Light) System: ACTIVE")
+    while true do
+        pcall(runFastAntiBlock)
+        task.wait(0.1) -- Jeda 0.1 detik untuk menghemat CPU (Anti-Lag)
+    end
+end)
 
 -- FRAME UTAMA
 local MainFrame = Instance.new("Frame", ScreenGui)
