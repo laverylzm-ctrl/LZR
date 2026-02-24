@@ -1,0 +1,1359 @@
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+local MarketplaceService = game:GetService("MarketplaceService")
+
+-- 1. Setup Dasar ScreenGui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AutoMinimizeGUI"
+ScreenGui.Parent = CoreGui
+ScreenGui.ResetOnSpawn = false
+
+-- 2. Frame Utama
+local MainFrame = Instance.new("Frame")
+local MainCorner = Instance.new("UICorner")
+
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+MainFrame.Position = UDim2.new(0, 20, 0.5, -17)
+MainFrame.Size = UDim2.new(0, 35, 0, 35) -- Status Awal: Minimize
+MainFrame.ClipsDescendants = true
+MainFrame.Active = true
+MainFrame.BorderSizePixel = 0
+
+MainCorner.CornerRadius = UDim.new(1, 0)
+MainCorner.Parent = MainFrame
+
+-------------------------------------------------------------------
+-- VARIABEL KONTROL GLOBAL & DATA PER TAB
+-------------------------------------------------------------------
+local isMinimized = true 
+local currentTrans = 0
+local isSliding = false
+local dragging = false
+local dragStart, startPos
+local lp = Players.LocalPlayer
+
+-- DATA TAB 1
+local folderName1 = "XenoOutfit_Saves.json"
+local LastAppliedID1 = nil 
+local AntiBlockConn = nil
+local SavedOutfits1 = {}
+
+-- Sinkronisasi Awal Data
+if isfile(folderName1) then
+    pcall(function() SavedOutfits1 = HttpService:JSONDecode(readfile(folderName1)) end)
+end
+
+-- DATA TAB 2
+local folderName2 = "StableOutfit_Saves.json"
+local LastAppliedID2 = nil
+local OriginalAssets2 = {}
+local SavedOutfits2 = {}
+
+-- Load Data Awal
+if isfile(folderName2) then
+    pcall(function() SavedOutfits2 = HttpService:JSONDecode(readfile(folderName2)) end)
+end
+
+-- DATA TAB 3
+local visualFileName3 = "XenoVisual_V16.json"
+local masterData3 = {}
+local activeRun3 = false
+local currentAnims3 = nil
+local originalAnims3 = {}
+
+-- DATA TAB 4
+local presetsFileName4 = "XenoV9_ClothesOnly_Storage.json"
+local activeVisual4 = false
+local SlotInputs4 = {}
+local OriginalAssets4 = {} -- Untuk menyimpan baju asli
+
+-- DATA TAB 5 (Hybrid Nebula)
+local presetsFileName5 = "XenoV9_Hybrid_Storage.json"
+local activeVisual5 = false
+local OriginalAssets5 = {}
+local antiBlockConn5 = nil
+local SlotInputs5 = {}
+local Storage5 = game:GetService("RobloxReplicatedStorage"):FindFirstChild("Nebula_Vault_V9")
+if not Storage5 then
+    Storage5 = Instance.new("Folder", game:GetService("RobloxReplicatedStorage"))
+    Storage5.Name = "Nebula_Vault_V9"
+end
+
+local function SaveOriginal5()
+    local char = lp.Character or lp.CharacterAdded:Wait()
+    table.clear(OriginalAssets5)
+    for _, v in pairs(char:GetChildren()) do
+        if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("BodyColors") then
+            table.insert(OriginalAssets5, v:Clone())
+        end
+    end
+end
+task.spawn(SaveOriginal5)
+
+-------------------------------------------------------------------
+-- UTILS (FUNGSI GLOBAL PEMBANTU)
+-------------------------------------------------------------------
+local function SafeWrite(name, content)
+    if writefile then pcall(function() writefile(name, content) end) end
+end
+
+local function SafeRead(name)
+    if isfile and isfile(name) then
+        local s, res = pcall(function() return readfile(name) end)
+        return s and res or nil
+    end
+    return nil
+end
+
+local function UpdateLabelName(idText, label, defaultName)
+    local id = tonumber(idText:match("%d+"))
+    if not id then label.Text = defaultName; label.TextColor3 = Color3.new(0.7,0.7,0.7) return end
+    task.spawn(function()
+        local success, info = pcall(function() return MarketplaceService:GetProductInfo(id) end)
+        if success and info then
+            label.Text = info.Name:sub(1,14)
+            label.TextColor3 = Color3.fromRGB(100, 200, 255)
+        end
+    end)
+end
+
+local function AlignSmart(acc, char)
+    local handle = acc:FindFirstChild("Handle")
+    if not handle then return end
+    local att = handle:FindFirstChildOfClass("Attachment")
+    local targetPart, charAtt
+    if att then
+        for _, v in pairs(char:GetDescendants()) do
+            if v:IsA("Attachment") and v.Name == att.Name then charAtt = v; targetPart = v.Parent; break end
+        end
+    end
+    targetPart = targetPart or char:FindFirstChild("Head")
+    if not targetPart then return end
+    handle.CanCollide = false
+    acc.Parent = char
+    for _, w in pairs(handle:GetChildren()) do if w:IsA("Weld") or w:IsA("ManualWeld") then w:Destroy() end end
+    local weld = Instance.new("Weld", handle)
+    weld.Part0 = handle; weld.Part1 = targetPart
+    if att and charAtt then weld.C0 = att.CFrame; weld.C1 = charAtt.CFrame else weld.C1 = CFrame.new(0, 0, 0) end
+end
+
+local function StopAnims(char)
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then for _, t in pairs(hum:GetPlayingAnimationTracks()) do t:Stop(0) end end
+end
+
+local function GetTemplate2(assetId)
+    if not assetId or assetId == 0 then return "" end
+    local assetUrl = "rbxassetid://" .. assetId
+    local success, result = pcall(function() return game:GetObjects(assetUrl)[1] end)
+    if success and result then
+        local id = ""
+        if result:IsA("Shirt") then id = result.ShirtTemplate
+        elseif result:IsA("Pants") then id = result.PantsTemplate
+        elseif result:IsA("ShirtGraphic") then id = result.Graphic end
+        result:Destroy()
+        return id
+    end
+    return assetUrl
+end
+
+-------------------------------------------------------------------
+-- GUI FRAMEWORK
+-------------------------------------------------------------------
+local CloseBtn = Instance.new("TextButton", MainFrame)
+CloseBtn.Size = UDim2.new(0, 30, 0, 30); CloseBtn.Position = UDim2.new(1, -35, 0, 10)
+CloseBtn.Text = "×"; CloseBtn.TextColor3 = Color3.new(0.5, 0.5, 0.5); CloseBtn.BackgroundTransparency = 1; CloseBtn.Visible = false
+
+local MinBtn = Instance.new("TextButton", MainFrame)
+MinBtn.Size = UDim2.new(0, 30, 0, 30); MinBtn.Position = UDim2.new(1, -65, 0, 10)
+MinBtn.Text = "—"; MinBtn.TextColor3 = Color3.new(0.5, 0.5, 0.5); MinBtn.BackgroundTransparency = 1; MinBtn.Visible = false
+
+local Sidebar = Instance.new("Frame", MainFrame)
+Sidebar.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+Sidebar.Size = UDim2.new(0, 50, 1, 0); Sidebar.Visible = false
+Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 12)
+local UIListLayout = Instance.new("UIListLayout", Sidebar)
+UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; UIListLayout.Padding = UDim.new(0, 12)
+Instance.new("UIPadding", Sidebar).PaddingTop = UDim.new(0, 60)
+
+local Container = Instance.new("Frame", MainFrame)
+Container.BackgroundTransparency = 1; Container.Visible = false
+Container.Position = UDim2.new(0, 65, 0, 50); Container.Size = UDim2.new(1, -75, 1, -60)
+
+local SliderContainer = Instance.new("Frame", MainFrame)
+SliderContainer.Size = UDim2.new(0, 100, 0, 30); SliderContainer.Position = UDim2.new(1, -175, 0, 10)
+SliderContainer.BackgroundTransparency = 1; SliderContainer.Visible = false
+local SliderFrame = Instance.new("Frame", SliderContainer)
+SliderFrame.Size = UDim2.new(0, 80, 0, 4); SliderFrame.Position = UDim2.new(0.5, 0, 0.5, 0); SliderFrame.AnchorPoint = Vector2.new(0.5, 0.5); SliderFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+local SliderBar = Instance.new("Frame", SliderFrame)
+SliderBar.Size = UDim2.new(0, 0, 1, 0); SliderBar.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+local SliderDot = Instance.new("Frame", SliderFrame)
+SliderDot.Size = UDim2.new(0, 10, 0, 10); SliderDot.Position = UDim2.new(0, 0, 0.5, 0); SliderDot.AnchorPoint = Vector2.new(0.5, 0.5); SliderDot.BackgroundColor3 = Color3.new(1, 1, 1)
+Instance.new("UICorner", SliderFrame); Instance.new("UICorner", SliderBar); Instance.new("UICorner", SliderDot)
+
+-------------------------------------------------------------------
+-- TAB 1: AVATAR + ANTI-BLOCK (FULL SYNC FOR TAB 6)
+-------------------------------------------------------------------
+local Tab1Frame = Instance.new("Frame", Container); Tab1Frame.Size = UDim2.new(1, 0, 1, 0); Tab1Frame.BackgroundTransparency = 1; Tab1Frame.Visible = false
+
+function StartAntiBlock1()
+    if AntiBlockConn then AntiBlockConn:Disconnect() end
+    AntiBlockConn = RunService.Stepped:Connect(function()
+        pcall(function()
+            for _, otherPlayer in pairs(Players:GetPlayers()) do
+                if otherPlayer ~= lp and otherPlayer.Character then
+                    for _, part in pairs(otherPlayer.Character:GetDescendants()) do
+                        if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
+                    end
+                end
+            end
+        end)
+    end)
+end
+
+-- [FUNGSI UTAMA: GLOBAL AGAR BISA DIBACA TAB 6]
+-- Menghilangkan 'local' agar fungsi ini bersifat global
+function ApplyPreset1(data)
+    -- Logika Penanganan Data: 
+    -- Jika data adalah table (dari Tab 6/Saved List), ambil isinya. Jika angka, gunakan langsung.
+    local targetId = nil
+    if type(data) == "table" then
+        targetId = tonumber(data.Data) or tonumber(data[1]) or data.ID
+    else
+        targetId = tonumber(data)
+    end
+
+    if not targetId then return false end
+
+    local char = lp.Character or lp.CharacterAdded:Wait()
+    local hum = char:WaitForChild("Humanoid", 5)
+    
+    if hum then
+        local success, desc = pcall(function() return Players:GetHumanoidDescriptionFromUserIdAsync(targetId) end)
+        if success and desc then
+            -- Bersihkan Item Lama agar tidak bertumpuk (Sesuai Logika Master)
+            for _, v in pairs(char:GetChildren()) do 
+                if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("CharacterMesh") or v:IsA("BodyColors") then 
+                    v:Destroy() 
+                end 
+            end
+            
+            pcall(function()
+                hum:ApplyDescriptionClientServer(desc)
+            end)
+            
+            StartAntiBlock1()
+            LastAppliedID1 = targetId
+            return true
+        end
+    end
+    return false
+end
+
+-- [FUNGSI RESET]
+function ResetToOriginal1()
+    LastAppliedID1 = nil
+    if AntiBlockConn then AntiBlockConn:Disconnect(); AntiBlockConn = nil end
+    local success, desc = pcall(function() return Players:GetHumanoidDescriptionFromUserIdAsync(lp.UserId) end)
+    if success then
+        local char = lp.Character
+        if char and char:FindFirstChild("Humanoid") then
+            char.Humanoid:ApplyDescriptionClientServer(desc)
+        end
+    end
+end
+
+-- Daftarkan ke Global Table (Untuk Backup Tab 6)
+_G.ApplyPreset1 = ApplyPreset1
+
+-------------------------------------------------------------------
+-- UI COMPONENTS TAB 1
+-------------------------------------------------------------------
+local Title1 = Instance.new("TextLabel", Tab1Frame); Title1.Size = UDim2.new(1, 0, 0, 30); Title1.Text = "AVATAR + ANTI-BLOCK"; Title1.TextColor3 = Color3.new(1, 1, 1); Title1.Font = Enum.Font.GothamBold; Title1.BackgroundTransparency = 1; Title1.TextSize = 18
+local Input1 = Instance.new("TextBox", Tab1Frame); Input1.Size = UDim2.new(1, 0, 0, 35); Input1.Position = UDim2.new(0, 0, 0.1, 0); Input1.PlaceholderText = "Username / UserID"; Input1.BackgroundColor3 = Color3.fromRGB(30, 30, 30); Input1.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", Input1)
+local ApplyBtn1 = Instance.new("TextButton", Tab1Frame); ApplyBtn1.Size = UDim2.new(1, 0, 0, 35); ApplyBtn1.Position = UDim2.new(0, 0, 0.25, 0); ApplyBtn1.Text = "USE AVATAR"; ApplyBtn1.BackgroundColor3 = Color3.fromRGB(60, 150, 60); ApplyBtn1.TextColor3 = Color3.new(1, 1, 1); ApplyBtn1.Font = Enum.Font.GothamBold; Instance.new("UICorner", ApplyBtn1)
+local ResetBtn1 = Instance.new("TextButton", Tab1Frame); ResetBtn1.Size = UDim2.new(1, 0, 0, 35); ResetBtn1.Position = UDim2.new(0, 0, 0.38, 0); ResetBtn1.Text = "RESET (OFF ANTI-BLOCK)"; ResetBtn1.BackgroundColor3 = Color3.fromRGB(50, 50, 50); ResetBtn1.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", ResetBtn1)
+local SaveBtn1 = Instance.new("TextButton", Tab1Frame); SaveBtn1.Size = UDim2.new(1, 0, 0, 35); SaveBtn1.Position = UDim2.new(0, 0, 0.51, 0); SaveBtn1.Text = "SAVE TO LIST"; SaveBtn1.BackgroundColor3 = Color3.fromRGB(40, 100, 200); SaveBtn1.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", SaveBtn1)
+local Scroll1 = Instance.new("ScrollingFrame", Tab1Frame); Scroll1.Size = UDim2.new(1, 0, 0, 150); Scroll1.Position = UDim2.new(0, 0, 0.65, 0); Scroll1.BackgroundTransparency = 0.9; Scroll1.ScrollBarThickness = 2
+local ListLayout1 = Instance.new("UIListLayout", Scroll1); ListLayout1.Padding = UDim.new(0, 5)
+
+function UpdateListUI1()
+    for _, child in pairs(Scroll1:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
+    for name, id in pairs(SavedOutfits1) do
+        local container = Instance.new("Frame", Scroll1); container.Size = UDim2.new(1, -5, 0, 30); container.BackgroundTransparency = 1
+        local b = Instance.new("TextButton", container); b.Size = UDim2.new(0.82, 0, 1, 0); b.Text = "👤 " .. name; b.BackgroundColor3 = Color3.fromRGB(45, 45, 45); b.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", b)
+        local del = Instance.new("TextButton", container); del.Size = UDim2.new(0.15, 0, 1, 0); del.Position = UDim2.new(0.85, 0, 0, 0); del.Text = "X"; del.BackgroundColor3 = Color3.fromRGB(120, 40, 40); del.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", del)
+        
+        b.MouseButton1Click:Connect(function() ApplyPreset1(id) end)
+        del.MouseButton1Click:Connect(function() 
+            SavedOutfits1[name] = nil; 
+            if writefile then writefile(folderName1, HttpService:JSONEncode(SavedOutfits1)) end
+            container:Destroy() 
+        end)
+    end
+end
+
+ApplyBtn1.MouseButton1Click:Connect(function()
+    local text = Input1.Text; local targetId = tonumber(text); if not targetId then pcall(function() targetId = Players:GetUserIdFromNameAsync(text) end) end
+    if targetId then if ApplyPreset1(targetId) then ApplyBtn1.Text = "SUCCESS!" else ApplyBtn1.Text = "FAILED!" end end
+    task.wait(1); ApplyBtn1.Text = "USE AVATAR"
+end)
+
+ResetBtn1.MouseButton1Click:Connect(ResetToOriginal1)
+
+SaveBtn1.MouseButton1Click:Connect(function()
+    local text = Input1.Text; if text ~= "" then 
+        local targetId = tonumber(text); if not targetId then pcall(function() targetId = Players:GetUserIdFromNameAsync(text) end) end
+        if targetId then 
+            SavedOutfits1[text] = targetId; 
+            if writefile then writefile(folderName1, HttpService:JSONEncode(SavedOutfits1)) end
+            UpdateListUI1() 
+        end 
+    end
+end)
+
+UpdateListUI1()
+
+-------------------------------------------------------------------
+-- DATA TAB 2
+-------------------------------------------------------------------
+local folderName2 = "StableOutfit_Saves.json"
+local LastAppliedID2 = nil
+local OriginalAssets2 = {} 
+local SavedOutfits2 = {}
+
+-- [LOGIKA PROTEKSI & UTILS]
+local function SafeWrite2(name, content)
+    if writefile then pcall(function() writefile(name, content) end) end
+end
+
+local function SaveOriginalAssets2()
+    local char = lp.Character or lp.CharacterAdded:Wait()
+    table.clear(OriginalAssets2)
+    for _, v in pairs(char:GetChildren()) do
+        if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("BodyColors") then
+            table.insert(OriginalAssets2, v:Clone())
+        end
+    end
+end
+task.spawn(SaveOriginalAssets2)
+
+local function GetTemplate2(assetId)
+    if not assetId or assetId == 0 then return "" end
+    local success, result = pcall(function() return game:GetObjects("rbxassetid://" .. assetId)[1] end)
+    if success and result then
+        local id = ""
+        if result:IsA("Shirt") then id = result.ShirtTemplate
+        elseif result:IsA("Pants") then id = result.PantsTemplate
+        elseif result:IsA("ShirtGraphic") then id = result.Graphic end
+        result:Destroy()
+        return id
+    end
+    return "rbxassetid://" .. assetId
+end
+
+local function AlignSmart2(acc, char)
+    local handle = acc:FindFirstChild("Handle")
+    if not handle then return end
+    local att = handle:FindFirstChildOfClass("Attachment")
+    local targetPart, charAtt
+    if att then
+        for _, v in pairs(char:GetDescendants()) do
+            if v:IsA("Attachment") and v.Name == att.Name then 
+                charAtt = v; targetPart = v.Parent; break 
+            end
+        end
+    end
+    targetPart = targetPart or char:FindFirstChild("Head")
+    if not targetPart then return end
+    handle.CanCollide = false
+    acc.Parent = char
+    for _, w in pairs(handle:GetChildren()) do 
+        if w:IsA("Weld") or w:IsA("ManualWeld") then w:Destroy() end 
+    end
+    local weld = Instance.new("Weld", handle)
+    weld.Part0 = handle; weld.Part1 = targetPart
+    if att and charAtt then weld.C0 = att.CFrame; weld.C1 = charAtt.CFrame 
+    else weld.C1 = CFrame.new(0, 0, 0) end
+end
+
+-- [FUNGSI UTAMA: GLOBAL AGAR BISA DIBACA TAB 6]
+-- Menghilangkan 'local' dan mengganti nama agar sesuai dengan pemanggilan Tab 6
+function ChangeAvatarManual2(data)
+    local targetId = nil
+    if type(data) == "table" then
+        targetId = tonumber(data.Data) or tonumber(data[1])
+    else
+        targetId = tonumber(data)
+    end
+
+    local char = lp.Character
+    if not char or not targetId then return false end
+    
+    -- Cleaning (Hapus baju/aksesoris lama)
+    for _, v in pairs(char:GetChildren()) do
+        if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("BodyColors") or v:IsA("ShirtGraphic") then 
+            v:Destroy() 
+        end
+    end
+    
+    local success, desc = pcall(function() return Players:GetHumanoidDescriptionFromUserIdAsync(targetId) end)
+    if success and desc then
+        task.spawn(function() if desc.Shirt > 0 then Instance.new("Shirt", char).ShirtTemplate = GetTemplate2(desc.Shirt) end end)
+        task.spawn(function() if desc.Pants > 0 then Instance.new("Pants", char).PantsTemplate = GetTemplate2(desc.Pants) end end)
+        task.spawn(function() if desc.GraphicTShirt > 0 then Instance.new("ShirtGraphic", char).Graphic = GetTemplate2(desc.GraphicTShirt) end end)
+        
+        for _, accData in pairs(desc:GetAccessories(true)) do
+            task.spawn(function()
+                pcall(function()
+                    for _, obj in pairs(game:GetObjects("rbxassetid://"..accData.AssetId)) do 
+                        if obj:IsA("Accessory") then AlignSmart2(obj, char) end 
+                    end
+                end)
+            end)
+        end
+        LastAppliedID2 = targetId
+        return true
+    end
+    return false
+end
+
+-- [FUNGSI RESET]
+function ResetToOriginal2()
+    LastAppliedID2 = nil
+    local char = lp.Character
+    if char then
+        for _, v in pairs(char:GetChildren()) do 
+            if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("ShirtGraphic") then v:Destroy() end 
+        end
+        for _, asset in pairs(OriginalAssets2) do
+            local clone = asset:Clone()
+            if clone:IsA("Accessory") then AlignSmart2(clone, char) else clone.Parent = char end
+        end
+    end
+end
+
+-- Backup Global untuk Tab 6
+_G.ChangeAvatarManual2 = ChangeAvatarManual2
+
+-------------------------------------------------------------------
+-- UI TAB 2 SETUP
+-------------------------------------------------------------------
+local Tab2Frame = Instance.new("Frame", Container); Tab2Frame.Size = UDim2.new(1, 0, 1, 0); Tab2Frame.BackgroundTransparency = 1; Tab2Frame.Visible = false
+local Title2 = Instance.new("TextLabel", Tab2Frame); Title2.Size = UDim2.new(1, 0, 0, 30); Title2.Text = "STABLE OUTFIT V7.2"; Title2.TextColor3 = Color3.new(1, 1, 1); Title2.Font = Enum.Font.GothamBold; Title2.BackgroundTransparency = 1; Title2.TextSize = 18
+local Input2 = Instance.new("TextBox", Tab2Frame); Input2.Size = UDim2.new(1, 0, 0, 35); Input2.Position = UDim2.new(0, 0, 0.1, 0); Input2.PlaceholderText = "ID or Username..."; Input2.BackgroundColor3 = Color3.fromRGB(30, 30, 30); Input2.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", Input2)
+local ApplyBtn2 = Instance.new("TextButton", Tab2Frame); ApplyBtn2.Size = UDim2.new(1, 0, 0, 35); ApplyBtn2.Position = UDim2.new(0, 0, 0.23, 0); ApplyBtn2.Text = "APPLY AVATAR"; ApplyBtn2.BackgroundColor3 = Color3.fromRGB(255, 100, 110); ApplyBtn2.TextColor3 = Color3.new(1, 1, 1); ApplyBtn2.Font = Enum.Font.GothamBold; Instance.new("UICorner", ApplyBtn2)
+local ResetBtn2 = Instance.new("TextButton", Tab2Frame); ResetBtn2.Size = UDim2.new(1, 0, 0, 35); ResetBtn2.Position = UDim2.new(0, 0, 0.33, 0); ResetBtn2.Text = "RESET TO ORIGINAL"; ResetBtn2.BackgroundColor3 = Color3.fromRGB(45, 45, 45); ResetBtn2.TextColor3 = Color3.new(1, 1, 1); ResetBtn2.Font = Enum.Font.GothamBold; Instance.new("UICorner", ResetBtn2)
+local SaveBtn2 = Instance.new("TextButton", Tab2Frame); SaveBtn2.Size = UDim2.new(1, 0, 0, 35); SaveBtn2.Position = UDim2.new(0, 0, 0.43, 0); SaveBtn2.Text = "SAVE TO LIST"; SaveBtn2.BackgroundColor3 = Color3.fromRGB(40, 100, 200); SaveBtn2.TextColor3 = Color3.new(1, 1, 1); SaveBtn2.Font = Enum.Font.GothamBold; Instance.new("UICorner", SaveBtn2)
+local Scroll2 = Instance.new("ScrollingFrame", Tab2Frame); Scroll2.Size = UDim2.new(1, 0, 0, 160); Scroll2.Position = UDim2.new(0, 0, 0.55, 0); Scroll2.BackgroundTransparency = 0.9; Scroll2.ScrollBarThickness = 2
+local ListLayout2 = Instance.new("UIListLayout", Scroll2); ListLayout2.Padding = UDim.new(0, 5)
+
+function UpdateListUI2()
+    for _, child in pairs(Scroll2:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
+    for name, id in pairs(SavedOutfits2) do
+        local ItemFrame = Instance.new("Frame", Scroll2); ItemFrame.Size = UDim2.new(1, -5, 0, 30); ItemFrame.BackgroundTransparency = 1
+        local b = Instance.new("TextButton", ItemFrame); b.Size = UDim2.new(0.82, 0, 1, 0); b.Text = "👤 " .. name; b.BackgroundColor3 = Color3.fromRGB(35, 35, 35); b.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", b)
+        local del = Instance.new("TextButton", ItemFrame); del.Size = UDim2.new(0.15, 0, 1, 0); del.Position = UDim2.new(0.85, 0, 0, 0); del.Text = "X"; del.BackgroundColor3 = Color3.fromRGB(100, 40, 40); del.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", del)
+        
+        b.MouseButton1Click:Connect(function() ChangeAvatarManual2(id) end)
+        del.MouseButton1Click:Connect(function() SavedOutfits2[name] = nil; SafeWrite2(folderName2, HttpService:JSONEncode(SavedOutfits2)); ItemFrame:Destroy() end)
+    end
+end
+
+ApplyBtn2.MouseButton1Click:Connect(function() 
+    local text = Input2.Text; local targetId = tonumber(text); if not targetId then pcall(function() targetId = Players:GetUserIdFromNameAsync(text) end) end
+    if targetId then ChangeAvatarManual2(targetId) end 
+end)
+
+ResetBtn2.MouseButton1Click:Connect(ResetToOriginal2)
+
+SaveBtn2.MouseButton1Click:Connect(function() 
+    local text = Input2.Text; if text ~= "" then 
+        local targetId = tonumber(text); if not targetId then pcall(function() targetId = Players:GetUserIdFromNameAsync(text) end) end
+        if targetId then SavedOutfits2[text] = targetId; SafeWrite2(folderName2, HttpService:JSONEncode(SavedOutfits2)); UpdateListUI2() end 
+    end 
+end)
+
+-- Initial Load
+if isfile(folderName2) then 
+    pcall(function() SavedOutfits2 = HttpService:JSONDecode(readfile(folderName2)) end) 
+    UpdateListUI2() 
+end
+
+-------------------------------------------------------------------
+-- TAB 3: STEAL ANIMATION (FIXED & NON-LOOPING)
+-------------------------------------------------------------------
+local Tab3Frame = Instance.new("Frame", Container); Tab3Frame.Size = UDim2.new(1, 0, 1, 0); Tab3Frame.BackgroundTransparency = 1; Tab3Frame.Visible = false
+
+local function StopAnims3(char)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then for _, t in pairs(hum:GetPlayingAnimationTracks()) do t:Stop(0.1) end end
+end
+
+-- Fungsi utama untuk menerapkan animasi (Hanya jalan 1x saat dipanggil)
+_G.Tab3_ApplyFunc = function(data)
+    local animTable = (type(data) == "table" and data.Data) or data
+    local char = lp.Character
+    local animS = char and char:FindFirstChild("Animate")
+    if animS and type(animTable) == "table" then
+        StopAnims3(char) -- Berhentikan yang lama agar tidak nyangkut
+        for name, id in pairs(animTable) do
+            local val = animS:FindFirstChild(name)
+            if val then
+                local a = val:FindFirstChildOfClass("Animation")
+                if a then a.AnimationId = id end
+            end
+        end
+        currentAnims3 = animTable
+        activeRun3 = true
+        return true
+    end
+    return false
+end
+
+-- Fungsi reset untuk kembali ke animasi asli (Hanya jalan 1x)
+local function ResetToOriginal3()
+    activeRun3 = false
+    local char = lp.Character
+    local animS = char and char:FindFirstChild("Animate")
+    if animS and originalAnims3 then
+        StopAnims3(char)
+        for name, id in pairs(originalAnims3) do
+            local val = animS:FindFirstChild(name)
+            if val then
+                local a = val:FindFirstChildOfClass("Animation")
+                if a then a.AnimationId = id end
+            end
+        end
+        -- Paksa refresh state Humanoid agar animasi asli langsung play
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Landed) end
+    end
+end
+
+-- Backup Animasi Asli saat script pertama kali jalan
+local function BackupOriginalAnims3()
+    local char = lp.Character or lp.CharacterAdded:Wait()
+    local animS = char:WaitForChild("Animate", 10)
+    if animS then
+        for _, v in pairs(animS:GetChildren()) do
+            if v:IsA("StringValue") then
+                local a = v:FindFirstChildOfClass("Animation")
+                if a then originalAnims3[v.Name] = a.AnimationId end
+            end
+        end
+    end
+end
+task.spawn(BackupOriginalAnims3)
+
+if not _G.MasterReset then _G.MasterReset = {} end
+_G.MasterReset[3] = ResetToOriginal3
+
+-- UI COMPONENTS
+local Title3 = Instance.new("TextLabel", Tab3Frame); Title3.Size = UDim2.new(1, 0, 0, 30); Title3.Text = "STEAL ANIMATION"; Title3.TextColor3 = Color3.new(1, 1, 1); Title3.Font = Enum.Font.GothamBold; Title3.BackgroundTransparency = 1; Title3.TextSize = 18
+local UseBtn3 = Instance.new("TextButton", Tab3Frame); UseBtn3.Size = UDim2.new(1, 0, 0, 35); UseBtn3.Position = UDim2.new(0, 0, 0, 40); UseBtn3.Text = "STEAL ANIMATION (SYSTEM: OFF)"; UseBtn3.BackgroundColor3 = Color3.fromRGB(150, 0, 0); UseBtn3.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", UseBtn3)
+local ResetBtn3 = Instance.new("TextButton", Tab3Frame); ResetBtn3.Size = UDim2.new(1, 0, 0, 35); ResetBtn3.Position = UDim2.new(0, 0, 0, 85); ResetBtn3.Text = "RESET TO ORIGINAL"; ResetBtn3.BackgroundColor3 = Color3.fromRGB(50, 50, 50); ResetBtn3.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", ResetBtn3)
+local NameBox3 = Instance.new("TextBox", Tab3Frame); NameBox3.Size = UDim2.new(1, 0, 0, 35); NameBox3.Position = UDim2.new(0, 0, 0, 130); NameBox3.PlaceholderText = "Name for Animation..."; NameBox3.BackgroundColor3 = Color3.fromRGB(30, 30, 30); NameBox3.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", NameBox3)
+local SaveBtn3 = Instance.new("TextButton", Tab3Frame); SaveBtn3.Size = UDim2.new(1, 0, 0, 35); SaveBtn3.Position = UDim2.new(0, 0, 0, 175); SaveBtn3.Text = "SAVE TO LIST"; SaveBtn3.BackgroundColor3 = Color3.fromRGB(40, 100, 200); SaveBtn3.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", SaveBtn3)
+local Scroll3 = Instance.new("ScrollingFrame", Tab3Frame); Scroll3.Size = UDim2.new(1, 0, 0, 180); Scroll3.Position = UDim2.new(0, 0, 0, 220); Scroll3.BackgroundTransparency = 0.9; Scroll3.ScrollBarThickness = 2
+local ListLayout3 = Instance.new("UIListLayout", Scroll3); ListLayout3.Padding = UDim.new(0, 5)
+
+local function UpdateListUI3()
+    for _, child in pairs(Scroll3:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
+    for name, animData in pairs(masterData3) do 
+        local container = Instance.new("Frame", Scroll3); container.Size = UDim2.new(1, -5, 0, 30); container.BackgroundTransparency = 1
+        local b = Instance.new("TextButton", container); b.Size = UDim2.new(0.82, 0, 1, 0); b.Text = "🏃 " .. name; b.BackgroundColor3 = Color3.fromRGB(45, 45, 45); b.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", b)
+        local del = Instance.new("TextButton", container); del.Size = UDim2.new(0.15, 0, 1, 0); del.Position = UDim2.new(0.85, 0, 0, 0); del.Text = "X"; del.BackgroundColor3 = Color3.fromRGB(120, 40, 40); del.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", del)
+        
+        b.MouseButton1Click:Connect(function() 
+            if _G.Tab3_ApplyFunc(animData) then
+                UseBtn3.Text = "SYSTEM: ON (" .. name .. ")"
+                UseBtn3.BackgroundColor3 = Color3.fromRGB(0, 150, 50)
+            end
+        end)
+        del.MouseButton1Click:Connect(function() 
+            masterData3[name] = nil
+            if writefile then writefile(visualFileName3, HttpService:JSONEncode(masterData3)) end
+            UpdateListUI3() 
+        end) 
+    end
+end
+
+-- LOGIC BUTTONS
+UseBtn3.MouseButton1Click:Connect(function() 
+    if not activeRun3 then 
+        local char = lp.Character; local animS = char and char:FindFirstChild("Animate")
+        if animS then 
+            local ext = {}
+            for _, v in pairs(animS:GetChildren()) do 
+                if v:IsA("StringValue") then 
+                    local a = v:FindFirstChildOfClass("Animation"); if a then ext[v.Name] = a.AnimationId end 
+                end 
+            end 
+            if _G.Tab3_ApplyFunc(ext) then
+                UseBtn3.Text = "SYSTEM: ON (COPIED)"; UseBtn3.BackgroundColor3 = Color3.fromRGB(0, 150, 50) 
+            end
+        end
+    else 
+        ResetToOriginal3()
+        UseBtn3.Text = "STEAL ANIMATION (SYSTEM: OFF)"; UseBtn3.BackgroundColor3 = Color3.fromRGB(150, 0, 0) 
+    end 
+end)
+
+ResetBtn3.MouseButton1Click:Connect(function()
+    ResetToOriginal3()
+    UseBtn3.Text = "STEAL ANIMATION (SYSTEM: OFF)"; UseBtn3.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+end)
+
+SaveBtn3.MouseButton1Click:Connect(function() 
+    local saveName = NameBox3.Text ~= "" and NameBox3.Text or "Unnamed Anim"
+    if currentAnims3 then 
+        masterData3[saveName] = currentAnims3
+        if writefile then writefile(visualFileName3, HttpService:JSONEncode(masterData3)) end
+        UpdateListUI3(); NameBox3.Text = "" 
+    end 
+end)
+
+UpdateListUI3()
+
+-------------------------------------------------------------------
+-- TAB 4: XENO V9 CLOTHES ONLY (INTEGRATED)
+-------------------------------------------------------------------
+local Tab4Frame = Instance.new("ScrollingFrame", Container)
+Tab4Frame.Size = UDim2.new(1, 0, 1, 0)
+Tab4Frame.BackgroundTransparency = 1
+Tab4Frame.Visible = false
+Tab4Frame.ScrollBarThickness = 4
+
+local Layout4 = Instance.new("UIListLayout", Tab4Frame)
+Layout4.Padding = UDim.new(0, 8)
+Layout4.HorizontalAlignment = "Center"
+Layout4.SortOrder = Enum.SortOrder.LayoutOrder
+Layout4:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() 
+    Tab4Frame.CanvasSize = UDim2.new(0, 0, 0, Layout4.AbsoluteContentSize.Y + 20) 
+end)
+
+-- Storage Folder Setup
+local Storage4 = game:GetService("RobloxReplicatedStorage"):FindFirstChild("Nebula_Vault_Clothes")
+if not Storage4 then
+    Storage4 = Instance.new("Folder", game:GetService("RobloxReplicatedStorage"))
+    Storage4.Name = "Nebula_Vault_Clothes"
+end
+
+-- [FUNCTIONS TAB 4]
+local function SaveOriginal4()
+    local char = lp.Character or lp.CharacterAdded:Wait()
+    table.clear(OriginalAssets4)
+    for _, v in pairs(char:GetChildren()) do
+        if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") then
+            table.insert(OriginalAssets4, v:Clone())
+        end
+    end
+end
+task.spawn(SaveOriginal4)
+
+function ForceRestore4()
+    activeVisual4 = false
+    VisualBtn4.Text = "CLOTHES VISUAL: OFF"
+    VisualBtn4.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+    if Storage4 then Storage4:ClearAllChildren() end
+    local char = lp.Character
+    if char then
+        for _, v in pairs(char:GetChildren()) do 
+            if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") then v:Destroy() end 
+        end
+        task.wait(0.1)
+        for _, asset in pairs(OriginalAssets4) do
+            local clone = asset:Clone()
+            if clone:IsA("Accessory") then AlignSmart(clone, char) else clone.Parent = char end
+        end
+    end
+end
+_G.ForceRestore4 = ForceRestore4
+
+function ToggleClothes4(state, externalData)
+    -- Tambahan: Jika ada data ID dari Tab 6, masukkan ke SlotInputs4
+    if externalData and type(externalData) == "table" then
+        for i, id in ipairs(externalData) do
+            if SlotInputs4[i] then SlotInputs4[i].Text = tostring(id) end
+        end
+    end
+    
+    -- Sisa kode di bawahnya tetap sama...
+    activeVisual4 = state
+    VisualBtn4.Text = activeVisual4 and "CLOTHES VISUAL: ON" or "CLOTHES VISUAL: OFF"
+    VisualBtn4.BackgroundColor3 = activeVisual4 and Color3.fromRGB(0, 150, 50) or Color3.fromRGB(150, 0, 0)
+    
+    if activeVisual4 then
+        Storage4:ClearAllChildren()
+        -- Trigger pemuatan ulang asset berdasarkan ID yang baru masuk
+        task.spawn(function()
+            local slotsToLoad = {}
+            for _, item in pairs(Tab4Frame:GetChildren()) do
+                if item:IsA("Frame") and item.Name:find("Slot") then table.insert(slotsToLoad, item) end
+            end
+            table.sort(slotsToLoad, function(a, b) return a.LayoutOrder < b.LayoutOrder end)
+            for _, slotFrame in ipairs(slotsToLoad) do
+                local textBox = slotFrame:FindFirstChild("InputRow") and slotFrame.InputRow:FindFirstChildOfClass("TextBox")
+                local id = textBox and tonumber(textBox.Text)
+                if id then
+                    pcall(function()
+                        for _, obj in pairs(game:GetObjects("rbxassetid://"..id)) do
+                            if obj:IsA("Accessory") or obj:IsA("Shirt") or obj:IsA("Pants") then obj.Parent = Storage4 end
+                        end
+                    end)
+                    task.wait(0.05)
+                end
+            end
+        end)
+        
+        -- Loop Visual (Tetap sama)
+        task.spawn(function()
+            while activeVisual4 do
+                local char = lp.Character
+                if char then
+                    pcall(function()
+                        for _, v in pairs(char:GetChildren()) do 
+                            if (v:IsA("Accessory") and not v:FindFirstChild("IsNebula")) or v:IsA("Shirt") or v:IsA("Pants") then v:Destroy() end 
+                        end
+                        for _, acc in ipairs(Storage4:GetChildren()) do 
+                            if not char:FindFirstChild(acc.Name) then 
+                                local clone = acc:Clone(); Instance.new("BoolValue", clone).Name = "IsNebula"
+                                if clone:IsA("Accessory") then AlignSmart(clone, char) else clone.Parent = char end 
+                            end 
+                        end
+                    end)
+                end
+                task.wait(0.6)
+            end
+        end)
+    end
+end
+_G.ToggleClothes4 = ToggleClothes4 -- Pastikan ini terdaftar ke Global
+
+-- [UI COMPONENTS TAB 4]
+VisualBtn4 = Instance.new("TextButton", Tab4Frame)
+VisualBtn4.Size = UDim2.new(0.95, 0, 0, 40); VisualBtn4.Text = "CLOTHES VISUAL: OFF"; VisualBtn4.BackgroundColor3 = Color3.fromRGB(150,0,0)
+VisualBtn4.TextColor3 = Color3.new(1,1,1); VisualBtn4.Font = "SourceSansBold"; Instance.new("UICorner", VisualBtn4); VisualBtn4.LayoutOrder = -10
+VisualBtn4.MouseButton1Click:Connect(function() ToggleClothes4(not activeVisual4) end)
+
+local ResetBtn4 = Instance.new("TextButton", Tab4Frame)
+ResetBtn4.Size = UDim2.new(0.95, 0, 0, 35); ResetBtn4.Text = "RESTORE ORIGINAL"; ResetBtn4.BackgroundColor3 = Color3.fromRGB(0, 120, 60)
+ResetBtn4.TextColor3 = Color3.new(1,1,1); ResetBtn4.Font = "SourceSansBold"; Instance.new("UICorner", ResetBtn4); ResetBtn4.LayoutOrder = 1000
+ResetBtn4.MouseButton1Click:Connect(ForceRestore4)
+
+local function createSlot4(name, i)
+    local container = Instance.new("Frame", Tab4Frame); container.Size = UDim2.new(0.92, 0, 0, 52); container.BackgroundTransparency = 1; container.Name = "Slot "..i
+    container.LayoutOrder = 10 + i
+    local label = Instance.new("TextLabel", container); label.Size = UDim2.new(1, 0, 0, 18); label.Text = name; label.TextColor3 = Color3.new(0.7, 0.7, 0.7); label.BackgroundTransparency = 1; label.TextXAlignment = "Left"; label.TextSize = 12; label.Font = "SourceSansBold"
+    local inputRow = Instance.new("Frame", container); inputRow.Size = UDim2.new(1, 0, 0, 30); inputRow.Position = UDim2.new(0, 0, 0, 20); inputRow.BackgroundTransparency = 1; inputRow.Name = "InputRow"
+    local b = Instance.new("TextBox", inputRow); b.BackgroundColor3 = Color3.fromRGB(30, 30, 30); b.TextColor3 = Color3.new(1, 1, 1); b.PlaceholderText = "Asset ID..."; b.TextSize = 13; b.Text = ""; Instance.new("UICorner", b)
+    b.Size = UDim2.new(1, -90, 1, 0); b.Position = UDim2.new(0, 45, 0, 0)
+    
+    local up = Instance.new("TextButton", inputRow); up.Text = "▲"; up.Size = UDim2.new(0, 40, 1, 0); up.Position = UDim2.new(1, -40, 0, 0); up.BackgroundColor3 = Color3.fromRGB(45, 45, 45); up.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", up)
+    local down = Instance.new("TextButton", inputRow); down.Text = "▼"; down.Size = UDim2.new(0, 40, 1, 0); down.BackgroundColor3 = Color3.fromRGB(45, 45, 45); down.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", down)
+    
+    up.MouseButton1Click:Connect(function() container.LayoutOrder = container.LayoutOrder - 1 end)
+    down.MouseButton1Click:Connect(function() container.LayoutOrder = container.LayoutOrder + 1 end)
+    b:GetPropertyChangedSignal("Text"):Connect(function() UpdateLabelName(b.Text, label, name) end)
+    return b
+end
+
+for i = 1, 20 do SlotInputs4[i] = createSlot4("Slot "..i, i) end
+
+local CopyBtn4 = Instance.new("TextButton", Tab4Frame); CopyBtn4.Size = UDim2.new(0.95, 0, 0, 35); CopyBtn4.Text = "COPY WEARING IDs"; CopyBtn4.BackgroundColor3 = Color3.fromRGB(0, 100, 180)
+CopyBtn4.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", CopyBtn4); CopyBtn4.LayoutOrder = 1001
+
+local nameBox4 = Instance.new("TextBox", Tab4Frame); nameBox4.Size = UDim2.new(0.95, 0, 0, 35); nameBox4.PlaceholderText = "Preset Name..."; nameBox4.BackgroundColor3 = Color3.fromRGB(40,40,40)
+nameBox4.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", nameBox4); nameBox4.LayoutOrder = 1002
+
+local SaveBtn4 = Instance.new("TextButton", Tab4Frame); SaveBtn4.Size = UDim2.new(0.95, 0, 0, 35); SaveBtn4.Text = "SAVE PRESET"; SaveBtn4.BackgroundColor3 = Color3.fromRGB(100, 0, 150)
+SaveBtn4.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", SaveBtn4); SaveBtn4.LayoutOrder = 1003
+
+local PresetContainer4 = Instance.new("Frame", Tab4Frame); PresetContainer4.Size = UDim2.new(0.95, 0, 0, 0); PresetContainer4.BackgroundTransparency = 1; PresetContainer4.AutomaticSize = "Y"; PresetContainer4.LayoutOrder = 1004
+Instance.new("UIListLayout", PresetContainer4).Padding = UDim.new(0,4)
+
+function RefreshPresets4()
+    for _, v in pairs(PresetContainer4:GetChildren()) do if v:IsA("Frame") then v:Destroy() end end
+    local data = HttpService:JSONDecode(SafeRead(presetsFileName4) or "{}")
+    for name, content in pairs(data) do
+        local f = Instance.new("Frame", PresetContainer4); f.Size = UDim2.new(1,0,0,30); f.BackgroundTransparency = 1
+        local l = Instance.new("TextButton", f); l.Size = UDim2.new(0.82,0,1,0); l.Text = "  "..name; l.BackgroundColor3 = Color3.fromRGB(35,35,35); l.TextColor3 = Color3.new(1,1,1); l.TextXAlignment = "Left"; l.Font = "SourceSansBold"; Instance.new("UICorner", l)
+        local d = Instance.new("TextButton", f); d.Size = UDim2.new(0,30,0,25); d.Position = UDim2.new(1,-35,0,2); d.Text = "X"; d.BackgroundColor3 = Color3.fromRGB(150,50,50); d.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", d)
+        l.MouseButton1Click:Connect(function()
+            ForceRestore4()
+            task.wait(0.1)
+            for i, v in ipairs(content.Slots) do if SlotInputs4[i] then SlotInputs4[i].Text = v end end
+            ToggleClothes4(true)
+        end)
+        d.MouseButton1Click:Connect(function() local c = HttpService:JSONDecode(SafeRead(presetsFileName4) or "{}"); c[name] = nil; SafeWrite(presetsFileName4, HttpService:JSONEncode(c)); RefreshPresets4() end)
+    end
+end
+
+CopyBtn4.MouseButton1Click:Connect(function()
+    local char = lp.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not char or not hum then return end
+    
+    local success, desc = pcall(function() return hum:GetAppliedDescription() end)
+    if not success or not desc then return end
+
+    -- Reset Slot Tab 4
+    for _, b in pairs(SlotInputs4) do b.Text = "" end
+
+    local priorityIDs = {"126853059538028", "101976716109786", "95850400713671", "82316297424206", "95714666435148"}
+    local finalIDs = {}
+    local hash = {}
+
+    local function addID(id)
+        if not id then return end
+        local sId = tostring(id)
+        if sId ~= "0" and sId ~= "" and not hash[sId] then 
+            table.insert(finalIDs, sId)
+            hash[sId] = true 
+        end
+    end
+
+    local allAccs = desc:GetAccessories(true)
+
+    -- Filter Priority
+    for _, pId in ipairs(priorityIDs) do
+        if tostring(desc.Shirt) == pId or tostring(desc.Pants) == pId then 
+            addID(pId)
+        else 
+            for _, acc in pairs(allAccs) do 
+                if tostring(acc.AssetId) == pId then addID(pId) break end 
+            end 
+        end
+    end
+
+    -- Filter Spesifik Accessory Type
+    for _, acc in pairs(allAccs) do if acc.AccessoryType == Enum.AccessoryType.DressSkirt then addID(acc.AssetId) end end
+    for _, acc in pairs(allAccs) do if acc.AccessoryType == Enum.AccessoryType.LeftShoe or acc.AccessoryType == Enum.AccessoryType.RightShoe then addID(acc.AssetId) end end
+    
+    addID(desc.Pants)
+    for _, acc in pairs(allAccs) do if acc.AccessoryType == Enum.AccessoryType.Pants or acc.AccessoryType == Enum.AccessoryType.Shorts then addID(acc.AssetId) end end
+    
+    addID(desc.Shirt)
+    for _, acc in pairs(allAccs) do 
+        if acc.AccessoryType == Enum.AccessoryType.Shirt or acc.AccessoryType == Enum.AccessoryType.TShirt or acc.AccessoryType == Enum.AccessoryType.Sweater or acc.AccessoryType == Enum.AccessoryType.Jacket then 
+            addID(acc.AssetId) 
+        end 
+    end
+
+    -- Masukkan sisanya
+    for _, acc in pairs(allAccs) do addID(acc.AssetId) end
+
+    -- Terapkan ke SlotInputs4
+    for i, id in ipairs(finalIDs) do 
+        if SlotInputs4[i] then SlotInputs4[i].Text = id end 
+    end
+end)
+
+SaveBtn4.MouseButton1Click:Connect(function()
+    local name = nameBox4.Text; if name == "" then return end
+    local data = { Slots = {} }
+    for i = 1, 20 do table.insert(data.Slots, SlotInputs4[i].Text) end
+    local cur = HttpService:JSONDecode(SafeRead(presetsFileName4) or "{}")
+    cur[name] = data; SafeWrite(presetsFileName4, HttpService:JSONEncode(cur))
+    nameBox4.Text = ""; RefreshPresets4()
+end)
+
+RefreshPresets4()
+
+-------------------------------------------------------------------
+-- TAB 5: HYBRID NEBULA (BODY + CLOTHES) - FIXED SAVE & SORT
+-------------------------------------------------------------------
+local Tab5Frame = Instance.new("Frame", Container); Tab5Frame.Size = UDim2.new(1, 0, 1, 0); Tab5Frame.BackgroundTransparency = 1; Tab5Frame.Visible = false
+
+local Scroll5 = Instance.new("ScrollingFrame", Tab5Frame); Scroll5.Size = UDim2.new(1, 0, 1, 0); Scroll5.BackgroundTransparency = 1; Scroll5.ScrollBarThickness = 4; Scroll5.CanvasSize = UDim2.new(0, 0, 0, 0)
+local Layout5 = Instance.new("UIListLayout", Scroll5); Layout5.Padding = UDim.new(0, 8); Layout5.HorizontalAlignment = "Center"; Layout5.SortOrder = Enum.SortOrder.LayoutOrder
+
+Layout5:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    Scroll5.CanvasSize = UDim2.new(0, 0, 0, Layout5.AbsoluteContentSize.Y + 40)
+end)
+
+-- Tombol Utama
+local VisualBtn5 = Instance.new("TextButton", Scroll5); VisualBtn5.Size = UDim2.new(0.95, 0, 0, 40); VisualBtn5.Text = "USE AVATAR: OFF"; VisualBtn5.BackgroundColor3 = Color3.fromRGB(150,0,0); VisualBtn5.TextColor3 = Color3.new(1,1,1); VisualBtn5.Font = "SourceSansBold"; Instance.new("UICorner", VisualBtn5); VisualBtn5.LayoutOrder = -10
+local ResetBtn5 = Instance.new("TextButton", Scroll5); ResetBtn5.Size = UDim2.new(0.95, 0, 0, 35); ResetBtn5.Text = "RESTORE ORIGINAL"; ResetBtn5.BackgroundColor3 = Color3.fromRGB(0, 120, 60); ResetBtn5.TextColor3 = Color3.new(1,1,1); ResetBtn5.Font = "SourceSansBold"; Instance.new("UICorner", ResetBtn5); ResetBtn5.LayoutOrder = 1000
+
+-- Fungsi Helper Input
+local function createInput5(name, isSlot)
+    local container = Instance.new("Frame", Scroll5); container.Size = UDim2.new(0.92, 0, 0, 52); container.BackgroundTransparency = 1; container.Name = name
+    local label = Instance.new("TextLabel", container); label.Size = UDim2.new(1, 0, 0, 18); label.Text = name; label.TextColor3 = Color3.new(0.7, 0.7, 0.7); label.BackgroundTransparency = 1; label.TextXAlignment = "Left"; label.TextSize = 12; label.Font = "SourceSansBold"
+    local inputRow = Instance.new("Frame", container); inputRow.Size = UDim2.new(1, 0, 0, 30); inputRow.Position = UDim2.new(0, 0, 0, 20); inputRow.BackgroundTransparency = 1; inputRow.Name = "InputRow"
+    local b = Instance.new("TextBox", inputRow); b.BackgroundColor3 = Color3.fromRGB(30, 30, 30); b.TextColor3 = Color3.new(1, 1, 1); b.PlaceholderText = "Asset ID..."; b.TextSize = 13; b.Text = ""; Instance.new("UICorner", b)
+    if isSlot then
+        local down = Instance.new("TextButton", inputRow); down.Text = "▼"; down.Size = UDim2.new(0, 40, 1, 0); down.BackgroundColor3 = Color3.fromRGB(45, 45, 45); down.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", down)
+        b.Size = UDim2.new(1, -90, 1, 0); b.Position = UDim2.new(0, 45, 0, 0)
+        local up = Instance.new("TextButton", inputRow); up.Text = "▲"; up.Size = UDim2.new(0, 40, 1, 0); up.Position = UDim2.new(1, -40, 0, 0); up.BackgroundColor3 = Color3.fromRGB(45, 45, 45); up.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", up)
+        up.MouseButton1Click:Connect(function() container.LayoutOrder = container.LayoutOrder - 1 end)
+        down.MouseButton1Click:Connect(function() container.LayoutOrder = container.LayoutOrder + 1 end)
+    else b.Size = UDim2.new(1, 0, 1, 0) end
+    b:GetPropertyChangedSignal("Text"):Connect(function() UpdateLabelName(b.Text, label, name) end); return b, container
+end
+
+-- Input Body Parts
+local inHead5 = createInput5("Head ID", false); inHead5.Parent.LayoutOrder = 1
+local inTorso5 = createInput5("Torso ID", false); inTorso5.Parent.LayoutOrder = 2
+local inRA5 = createInput5("R-Arm ID", false); inRA5.Parent.LayoutOrder = 3
+local inLA5 = createInput5("L-Arm ID", false); inLA5.Parent.LayoutOrder = 4
+local inRL5 = createInput5("R-Leg ID", false); inRL5.Parent.LayoutOrder = 5
+local inLL5 = createInput5("L-Leg ID", false); inLL5.Parent.LayoutOrder = 6
+
+-- Input Slots
+local SlotInputs5 = {}
+for i = 1, 20 do 
+    local b, f = createInput5("Slot "..i, true); f.LayoutOrder = 10 + i; table.insert(SlotInputs5, b) 
+end
+
+-- FUNGSI: Restore Original
+local function ForceRestore5()
+    activeVisual5 = false; VisualBtn5.Text = "USE AVATAR: OFF"; VisualBtn5.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+    if antiBlockConn5 then antiBlockConn5:Disconnect(); antiBlockConn5 = nil end
+    Storage5:ClearAllChildren()
+    local char = lp.Character; local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if char and hum then
+        for _, v in pairs(char:GetChildren()) do 
+            if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("ShirtGraphic") or v:IsA("BodyColors") or v:IsA("CharacterMesh") then v:Destroy() end 
+        end
+        pcall(function()
+            local desc = Players:GetHumanoidDescriptionFromUserIdAsync(lp.UserId)
+            if desc then hum:ApplyDescriptionClientServer(desc) end
+        end)
+        task.wait(0.1)
+        for _, asset in pairs(OriginalAssets5) do
+            local clone = asset:Clone()
+            if clone:IsA("Accessory") then AlignSmart(clone, char) else clone.Parent = char end
+        end
+    end
+end
+ResetBtn5.MouseButton1Click:Connect(ForceRestore5)
+
+-- FUNGSI: Toggle Main Engine
+local function toggle5(state)
+    activeVisual5 = state
+    VisualBtn5.Text = activeVisual5 and "USE AVATAR: ON" or "USE AVATAR: OFF"
+    VisualBtn5.BackgroundColor3 = activeVisual5 and Color3.fromRGB(0, 150, 50) or Color3.fromRGB(150, 0, 0)
+    
+    if activeVisual5 then
+        if not antiBlockConn5 then
+            antiBlockConn5 = RunService.Stepped:Connect(function()
+                for _, op in pairs(Players:GetPlayers()) do
+                    if op ~= lp and op.Character then
+                        for _, p in pairs(op.Character:GetDescendants()) do
+                            if p:IsA("BasePart") then p.CanCollide = false end
+                        end
+                    end
+                end
+            end)
+        end
+        Storage5:ClearAllChildren()
+        task.spawn(function()
+            local slots = {}
+            for _, v in pairs(Scroll5:GetChildren()) do if v:IsA("Frame") and v.Name:find("Slot") then table.insert(slots, v) end end
+            table.sort(slots, function(a,b) return a.LayoutOrder < b.LayoutOrder end)
+            for _, f in ipairs(slots) do
+                local box = f:FindFirstChild("InputRow") and f.InputRow:FindFirstChildOfClass("TextBox")
+                local id = box and tonumber(box.Text)
+                if id then pcall(function() for _, o in pairs(game:GetObjects("rbxassetid://"..id)) do if o:IsA("Accessory") or o:IsA("Shirt") or o:IsA("Pants") or o:IsA("CharacterMesh") then o.Parent = Storage5 end end end) task.wait(0.05) end
+            end
+        end)
+        task.spawn(function()
+            while activeVisual5 and Tab5Frame.Parent do
+                local char = lp.Character; local hum = char and char:FindFirstChildOfClass("Humanoid")
+                if char and hum then
+                    pcall(function()
+                        local d = hum:GetAppliedDescription()
+                        d.Head = tonumber(inHead5.Text) or d.Head; d.Torso = tonumber(inTorso5.Text) or d.Torso
+                        d.RightArm = tonumber(inRA5.Text) or d.RightArm; d.LeftArm = tonumber(inLA5.Text) or d.LeftArm
+                        d.RightLeg = tonumber(inRL5.Text) or d.RightLeg; d.LeftLeg = tonumber(inLL5.Text) or d.LeftLeg
+                        hum:ApplyDescriptionClientServer(d)
+                        for _, v in pairs(char:GetChildren()) do if (v:IsA("Accessory") and not v:FindFirstChild("IsNebula")) or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("CharacterMesh") then v:Destroy() end end
+                        for _, acc in ipairs(Storage5:GetChildren()) do
+                            if not char:FindFirstChild(acc.Name) then
+                                local c = acc:Clone(); Instance.new("BoolValue", c).Name = "IsNebula"
+                                if c:IsA("Accessory") then AlignSmart(c, char) else c.Parent = char end
+                            end
+                        end
+                    end)
+                end
+                task.wait(0.6)
+            end
+        end)
+    else
+        if antiBlockConn5 then antiBlockConn5:Disconnect(); antiBlockConn5 = nil end
+    end
+end
+VisualBtn5.MouseButton1Click:Connect(function() toggle5(not activeVisual5) end)
+
+-- Tombol Copy & Save
+local CopyBtn5 = Instance.new("TextButton", Scroll5); CopyBtn5.Size = UDim2.new(0.95, 0, 0, 35); CopyBtn5.Text = "COPY ALL IDS (STRICT RULES)"; CopyBtn5.BackgroundColor3 = Color3.fromRGB(0, 100, 180); CopyBtn5.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", CopyBtn5); CopyBtn5.LayoutOrder = 1001
+local nameBox5 = Instance.new("TextBox", Scroll5); nameBox5.Size = UDim2.new(0.95, 0, 0, 35); nameBox5.PlaceholderText = "Preset Name..."; nameBox5.BackgroundColor3 = Color3.fromRGB(40,40,40); nameBox5.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", nameBox5); nameBox5.LayoutOrder = 1002
+local SaveBtn5 = Instance.new("TextButton", Scroll5); SaveBtn5.Size = UDim2.new(0.95, 0, 0, 35); SaveBtn5.Text = "SAVE PRESET"; SaveBtn5.BackgroundColor3 = Color3.fromRGB(100, 0, 150); SaveBtn5.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", SaveBtn5); SaveBtn5.LayoutOrder = 1003
+local PresetContainer5 = Instance.new("Frame", Scroll5); PresetContainer5.Size = UDim2.new(0.95, 0, 0, 0); PresetContainer5.BackgroundTransparency = 1; PresetContainer5.AutomaticSize = "Y"; PresetContainer5.LayoutOrder = 1004; Instance.new("UIListLayout", PresetContainer5).Padding = UDim.new(0,4)
+
+-- FUNGSI: Copy IDs (STRICT RULES FIXED)
+CopyBtn5.MouseButton1Click:Connect(function()
+    local char = lp.Character; local hum = char:FindFirstChildOfClass("Humanoid")
+    if not char or not hum then return end
+    local success, desc = pcall(function() return hum:GetAppliedDescription() end)
+    if not success or not desc then return end
+
+    inHead5.Text = tostring(desc.Head); inTorso5.Text = tostring(desc.Torso)
+    inRA5.Text = tostring(desc.RightArm); inLA5.Text = tostring(desc.LeftArm)
+    inRL5.Text = tostring(desc.RightLeg); inLL5.Text = tostring(desc.LeftLeg)
+
+    for _, b in pairs(SlotInputs5) do b.Text = "" end
+    local priorityIDs = {"126853059538028", "101976716109786", "95850400713671", "82316297424206", "95714666435148"}
+    local finalIDs = {}; local hash = {}
+    local allAccs = desc:GetAccessories(true)
+
+    local function addID(id)
+        local sId = tostring(id)
+        if sId ~= "0" and sId ~= "" and not hash[sId] then table.insert(finalIDs, sId); hash[sId] = true end
+    end
+
+    for _, pId in ipairs(priorityIDs) do
+        if tostring(desc.Shirt) == pId or tostring(desc.Pants) == pId then addID(pId)
+        else for _, acc in pairs(allAccs) do if tostring(acc.AssetId) == pId then addID(pId) break end end end
+    end
+    for _, acc in pairs(allAccs) do if acc.AccessoryType == Enum.AccessoryType.DressSkirt then addID(acc.AssetId) end end
+    for _, acc in pairs(allAccs) do if acc.AccessoryType == Enum.AccessoryType.LeftShoe or acc.AccessoryType == Enum.AccessoryType.RightShoe then addID(acc.AssetId) end end
+    addID(desc.Pants)
+    for _, acc in pairs(allAccs) do if acc.AccessoryType == Enum.AccessoryType.Pants or acc.AccessoryType == Enum.AccessoryType.Shorts or acc.AccessoryType == Enum.AccessoryType.DressSkirt then addID(acc.AssetId) end end
+    addID(desc.Shirt)
+    for _, acc in pairs(allAccs) do if acc.AccessoryType == Enum.AccessoryType.Shirt or acc.AccessoryType == Enum.AccessoryType.TShirt or acc.AccessoryType == Enum.AccessoryType.Sweater or acc.AccessoryType == Enum.AccessoryType.Jacket then addID(acc.AssetId) end end
+    for _, acc in pairs(allAccs) do addID(acc.AssetId) end
+    for i, id in ipairs(finalIDs) do if SlotInputs5[i] then SlotInputs5[i].Text = id end end
+end)
+
+-- FUNGSI: Preset Management
+function RefreshPresets5()
+    for _, v in pairs(PresetContainer5:GetChildren()) do if v:IsA("Frame") then v:Destroy() end end
+    local decoded = HttpService:JSONDecode(SafeRead(presetsFileName5) or "{}")
+    for name, content in pairs(decoded) do
+        local f = Instance.new("Frame", PresetContainer5); f.Size = UDim2.new(1,0,0,30); f.BackgroundTransparency = 1
+        local l = Instance.new("TextButton", f); l.Size = UDim2.new(0.82,0,1,0); l.Text = "  "..name; l.BackgroundColor3 = Color3.fromRGB(35,35,35); l.TextColor3 = Color3.new(1,1,1); l.TextXAlignment = "Left"; l.Font = "SourceSansBold"; Instance.new("UICorner", l)
+        local d = Instance.new("TextButton", f); d.Size = UDim2.new(0,30,0,25); d.Position = UDim2.new(1,-35,0,2); d.Text = "X"; d.BackgroundColor3 = Color3.fromRGB(150,50,50); d.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", d)
+        
+        l.MouseButton1Click:Connect(function()
+            ForceRestore5(); task.wait(0.1)
+            inHead5.Text = content.Body[1]; inTorso5.Text = content.Body[2]; inRA5.Text = content.Body[3]; inLA5.Text = content.Body[4]; inRL5.Text = content.Body[5]; inLL5.Text = content.Body[6]
+            for i, v in ipairs(content.Slots) do if SlotInputs5[i] then SlotInputs5[i].Text = v end end
+            toggle5(true)
+        end)
+        d.MouseButton1Click:Connect(function() 
+            local cur = HttpService:JSONDecode(SafeRead(presetsFileName5) or "{}")
+            cur[name] = nil; SafeWrite(presetsFileName5, HttpService:JSONEncode(cur)); RefreshPresets5() 
+        end)
+    end
+end
+
+-------------------------------------------------------------------
+-- FIXED SAVE BUTTON (MENGIKUTI URUTAN LAYOUT)
+-------------------------------------------------------------------
+SaveBtn5.MouseButton1Click:Connect(function()
+    local name = nameBox5.Text; if name == "" then return end
+    
+    -- Ambil semua slot dan sortir berdasarkan urutan tampilan (LayoutOrder)
+    local sortedSlots = {}
+    for _, item in pairs(Scroll5:GetChildren()) do
+        if item:IsA("Frame") and item.Name:find("Slot") then
+            table.insert(sortedSlots, item)
+        end
+    end
+    table.sort(sortedSlots, function(a, b) return a.LayoutOrder < b.LayoutOrder end)
+
+    -- Masukkan teks ID dari slot yang sudah disortir ke tabel data
+    local finalSlotsData = {}
+    for _, slotFrame in ipairs(sortedSlots) do
+        local textBox = slotFrame:FindFirstChild("InputRow") and slotFrame.InputRow:FindFirstChildOfClass("TextBox")
+        if textBox then
+            table.insert(finalSlotsData, textBox.Text)
+        end
+    end
+
+    local data = { 
+        Body = {inHead5.Text, inTorso5.Text, inRA5.Text, inLA5.Text, inRL5.Text, inLL5.Text}, 
+        Slots = finalSlotsData 
+    }
+    
+    local cur = HttpService:JSONDecode(SafeRead(presetsFileName5) or "{}")
+    cur[name] = data
+    SafeWrite(presetsFileName5, HttpService:JSONEncode(cur))
+    nameBox5.Text = ""
+    RefreshPresets5()
+end)
+
+RefreshPresets5()
+
+-------------------------------------------------------------------
+-- TAB 6: MASTER CONTROL (LENGKAP - SYNC TAB 4 & FIX RESET)
+-------------------------------------------------------------------
+local Tab6Frame = Instance.new("Frame", Container); Tab6Frame.Size = UDim2.new(1, 0, 1, 0); Tab6Frame.BackgroundTransparency = 1; Tab6Frame.Visible = false
+
+local Scroll6 = Instance.new("ScrollingFrame", Tab6Frame); Scroll6.Size = UDim2.new(1, 0, 1, 0); Scroll6.BackgroundTransparency = 1; Scroll6.ScrollBarThickness = 2; Scroll6.CanvasSize = UDim2.new(0, 0, 0, 0); Scroll6.AutomaticCanvasSize = "Y"
+local Layout6 = Instance.new("UIListLayout", Scroll6); Layout6.Padding = UDim.new(0, 8); Layout6.HorizontalAlignment = "Center"
+
+local masterSaveFile = "XenoMaster_Combos.json"
+local Selection = {Tab1 = nil, Tab2 = nil, Tab3 = nil, Tab4 = nil, Tab5 = nil}
+local DropdownButtons = {}
+local allLists = {}
+
+-- FUNGSI RESET MASTER (TERMASUK TAB 4)
+local function MasterRestore()
+    -- 1. Matikan Visual Global / Tab Dasar
+    activeVisual = false
+    activeRun3 = false
+    
+    -- 2. Matikan Tab 5 (Hybrid)
+    if toggle5 then pcall(function() toggle5(false) end) end
+    if ForceRestore5 then pcall(function() ForceRestore5() end) end
+    
+    -- 3. FIX: Matikan Tab 4 (Clothes) dan Ubah Button Jadi OFF
+    if _G.ForceRestore4 then 
+        pcall(function() _G.ForceRestore4() end) 
+    end
+    
+    -- 4. Reset Data Seleksi & UI
+    Selection = {Tab1 = nil, Tab2 = nil, Tab3 = nil, Tab4 = nil, Tab5 = nil}
+    for key, btn in pairs(DropdownButtons) do 
+        btn.Text = key:gsub("Tab", "Choose ") .. ": [NOTHING]" 
+    end
+end
+
+-- FUNGSI DROP DOWN
+local function CreateDropdown(title, fileName, order, selectionKey)
+    local frame = Instance.new("Frame", Scroll6); frame.LayoutOrder = order; frame.Size = UDim2.new(0.9, 0, 0, 35); frame.BackgroundColor3 = Color3.fromRGB(30, 35, 50); Instance.new("UICorner", frame)
+    local btn = Instance.new("TextButton", frame); btn.Size = UDim2.new(1, 0, 1, 0); btn.Text = title .. ": [NOTHING]"; btn.TextColor3 = Color3.new(1, 1, 1); btn.BackgroundTransparency = 1; btn.Font = "SourceSansBold"
+    DropdownButtons[selectionKey] = btn
+    
+    local list = Instance.new("Frame", Scroll6); list.LayoutOrder = order + 1; list.Size = UDim2.new(0.9, 0, 0, 0); list.BackgroundColor3 = Color3.fromRGB(20, 20, 30); list.Visible = false; list.ClipsDescendants = true; Instance.new("UIListLayout", list)
+    table.insert(allLists, list)
+
+    btn.MouseButton1Click:Connect(function()
+        local isOpening = not list.Visible
+        for _, otherList in pairs(allLists) do otherList.Visible = false; otherList.Size = UDim2.new(0.9, 0, 0, 0) end
+        if isOpening then
+            for _, c in pairs(list:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+            local cancel = Instance.new("TextButton", list); cancel.Size = UDim2.new(1, 0, 0, 30); cancel.Text = "❌ CLOSE & RESET"; cancel.BackgroundColor3 = Color3.fromRGB(80, 30, 30); cancel.TextColor3 = Color3.new(1, 1, 1); cancel.Font = "SourceSansBold"
+            cancel.MouseButton1Click:Connect(function() Selection[selectionKey] = nil; btn.Text = title .. ": [NOTHING]"; list.Visible = false; list.Size = UDim2.new(0.9, 0, 0, 0) end)
+
+            local data = HttpService:JSONDecode(SafeRead(fileName) or "{}")
+            local count = 1
+            for name, val in pairs(data) do
+                count = count + 1
+                local opt = Instance.new("TextButton", list); opt.Size = UDim2.new(1, 0, 0, 30); opt.Text = tostring(name); opt.BackgroundColor3 = Color3.fromRGB(40, 45, 60); opt.TextColor3 = Color3.new(0.8, 0.8, 0.8); opt.Font = "SourceSans"
+                opt.MouseButton1Click:Connect(function() Selection[selectionKey] = {Name = name, Data = val}; btn.Text = title .. ": " .. tostring(name); list.Visible = false; list.Size = UDim2.new(0.9, 0, 0, 0) end)
+            end
+            list.Visible = true; list.Size = UDim2.new(0.9, 0, 0, math.min(count * 30, 150))
+        end
+    end)
+end
+
+CreateDropdown("Choose Avatar", folderName1, 1, "Tab1")
+CreateDropdown("Choose Outfit", folderName2, 3, "Tab2")
+CreateDropdown("Choose Animation", visualFileName3, 5, "Tab3")
+CreateDropdown("Choose Body", presetsFileName4, 7, "Tab4")
+CreateDropdown("Choose Hybrid", presetsFileName5, 9, "Tab5")
+
+-- FUNGSI EKSEKUSI (URUTAN 5-1-4-2-3)
+local function RunMaster()
+    task.spawn(function()
+        -- 1. TAB 5 (HYBRID)
+        if Selection.Tab5 and Selection.Tab5.Data and toggle5 then
+            local c = Selection.Tab5.Data
+            if inHead5 then inHead5.Text = c.Body[1] end
+            if inTorso5 then inTorso5.Text = c.Body[2] end
+            if inRA5 then inRA5.Text = c.Body[3] end
+            if inLA5 then inLA5.Text = c.Body[4] end
+            if inRL5 then inRL5.Text = c.Body[5] end
+            if inLL5 then inLL5.Text = c.Body[6] end
+            for i, v in ipairs(c.Slots) do if SlotInputs5[i] then SlotInputs5[i].Text = v end end
+            pcall(function() toggle5(true) end)
+            task.wait(0.3)
+        end
+
+        -- 2. TAB 1 (AVATAR)
+        if Selection.Tab1 and Selection.Tab1.Data then
+            local func = _G.ApplyPreset1 or ApplyPreset1
+            if func then pcall(function() func(Selection.Tab1.Data) end) end
+            task.wait(0.2)
+        end
+
+        -- 3. TAB 4 (BODY / CLOTHES ONLY) - VERSI FIX
+if Selection.Tab4 and Selection.Tab4.Data then
+    if _G.ToggleClothes4 then
+        -- Kita panggil dengan (true untuk aktif, dan kirim data Slotnya)
+        pcall(function() 
+            _G.ToggleClothes4(true, Selection.Tab4.Data.Slots or Selection.Tab4.Data) 
+        end)
+    end
+    task.wait(0.2)
+end
+
+        -- 4. TAB 2 (OUTFIT)
+        if Selection.Tab2 and Selection.Tab2.Data then
+            local func = _G.ChangeAvatarManual2 or ChangeAvatarManual2
+            if func then pcall(function() func(Selection.Tab2.Data) end) end
+            task.wait(0.2)
+        end
+
+        -- 5. TAB 3 (ANIMATION)
+        if Selection.Tab3 and Selection.Tab3.Data then
+            local animData = Selection.Tab3.Data.Anims or Selection.Tab3.Data
+            currentAnims3 = animData
+            activeRun3 = true
+            if lp.Character then pcall(function() StopAnims(lp.Character) end) end
+        end
+    end)
+end
+
+local RunAll = Instance.new("TextButton", Scroll6); RunAll.LayoutOrder = 20; RunAll.Size = UDim2.new(0.9, 0, 0, 40); RunAll.Text = "USE ALL COMBOS"; RunAll.BackgroundColor3 = Color3.fromRGB(0, 120, 255); RunAll.TextColor3 = Color3.new(1, 1, 1); RunAll.Font = "SourceSansBold"; Instance.new("UICorner", RunAll)
+RunAll.MouseButton1Click:Connect(RunMaster)
+
+local ResetAll = Instance.new("TextButton", Scroll6); ResetAll.LayoutOrder = 21; ResetAll.Size = UDim2.new(0.9, 0, 0, 35); ResetAll.Text = "RESTORE ORIGINAL"; ResetAll.BackgroundColor3 = Color3.fromRGB(0, 120, 60); ResetAll.TextColor3 = Color3.new(1, 1, 1); ResetAll.Font = "SourceSansBold"; Instance.new("UICorner", ResetAll)
+ResetAll.MouseButton1Click:Connect(MasterRestore)
+
+-- BAGIAN SIMPAN PRESET COMBO
+local NameBox = Instance.new("TextBox", Scroll6); NameBox.LayoutOrder = 25; NameBox.Size = UDim2.new(0.9, 0, 0, 35); NameBox.PlaceholderText = "Combo Name..."; NameBox.BackgroundColor3 = Color3.fromRGB(25, 25, 35); NameBox.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", NameBox)
+local SaveCombo = Instance.new("TextButton", Scroll6); SaveCombo.LayoutOrder = 26; SaveCombo.Size = UDim2.new(0.9, 0, 0, 35); SaveCombo.Text = "SAVE PRESET COMBO"; SaveCombo.BackgroundColor3 = Color3.fromRGB(100, 0, 150); SaveCombo.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", SaveCombo)
+local ComboContainer = Instance.new("Frame", Scroll6); ComboContainer.LayoutOrder = 30; ComboContainer.Size = UDim2.new(0.9, 0, 0, 0); ComboContainer.BackgroundTransparency = 1; ComboContainer.AutomaticSize = "Y"
+Instance.new("UIListLayout", ComboContainer).Padding = UDim.new(0, 5)
+
+local function RefreshComboUI()
+    for _, child in pairs(ComboContainer:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
+    local data = HttpService:JSONDecode(SafeRead(masterSaveFile) or "{}")
+    for name, savedData in pairs(data) do
+        local f = Instance.new("Frame", ComboContainer); f.Size = UDim2.new(1, 0, 0, 35); f.BackgroundColor3 = Color3.fromRGB(35, 35, 45); Instance.new("UICorner", f)
+        local b = Instance.new("TextButton", f); b.Size = UDim2.new(0.8, 0, 1, 0); b.Text = "  ⭐ " .. name; b.BackgroundTransparency = 1; b.TextColor3 = Color3.new(1,1,1); b.Font = "SourceSansBold"; b.TextXAlignment = "Left"
+        local d = Instance.new("TextButton", f); d.Size = UDim2.new(0, 30, 0, 25); d.Position = UDim2.new(1, -35, 0.5, -12); d.Text = "X"; d.BackgroundColor3 = Color3.fromRGB(150, 40, 40); d.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", d)
+        
+        b.MouseButton1Click:Connect(function() 
+            MasterRestore() 
+            task.wait(0.3) 
+            Selection = savedData 
+            for key, btn in pairs(DropdownButtons) do 
+                if Selection[key] then 
+                    btn.Text = key:gsub("Tab", "Choose ") .. ": " .. tostring(Selection[key].Name) 
+                end 
+            end 
+            RunMaster() 
+        end)
+        
+        d.MouseButton1Click:Connect(function() 
+            local cur = HttpService:JSONDecode(SafeRead(masterSaveFile) or "{}")
+            cur[name] = nil
+            SafeWrite(masterSaveFile, HttpService:JSONEncode(cur))
+            RefreshComboUI() 
+        end)
+    end
+end
+
+SaveCombo.MouseButton1Click:Connect(function() 
+    if NameBox.Text == "" then return end
+    local cur = HttpService:JSONDecode(SafeRead(masterSaveFile) or "{}")
+    cur[NameBox.Text] = Selection
+    SafeWrite(masterSaveFile, HttpService:JSONEncode(cur))
+    NameBox.Text = ""
+    RefreshComboUI() 
+end)
+
+RefreshComboUI()
+
+-------------------------------------------------------------------
+-- NAVIGATION & MAIN LOGIC
+-------------------------------------------------------------------
+local function ToggleMinimize(state)
+	isMinimized = state
+	if isMinimized then
+		CloseBtn.Visible = false; MinBtn.Visible = false; Sidebar.Visible = false; Container.Visible = false; SliderContainer.Visible = false
+		MainFrame:TweenSize(UDim2.new(0, 35, 0, 35), "Out", "Quad", 0.3, true)
+		MainCorner.CornerRadius = UDim.new(1, 0); MainFrame.BackgroundTransparency = currentTrans
+	else
+		MainFrame:TweenSize(UDim2.new(0, 550, 0, 480), "Out", "Quad", 0.3, true)
+		MainCorner.CornerRadius = UDim.new(0, 12); MainFrame.BackgroundTransparency = 0
+		task.wait(0.2); CloseBtn.Visible = true; MinBtn.Visible = true; Sidebar.Visible = true; Container.Visible = true; SliderContainer.Visible = true
+	end
+end
+
+SliderContainer.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then isSliding = true end end)
+UserInputService.InputChanged:Connect(function(input)
+	if isSliding and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local pos = math.clamp((input.Position.X - SliderFrame.AbsolutePosition.X) / SliderFrame.AbsoluteSize.X, 0, 1)
+		currentTrans = pos; SliderDot.Position = UDim2.new(pos, 0, 0.5, 0); SliderBar.Size = UDim2.new(pos, 0, 1, 0)
+		if isMinimized then MainFrame.BackgroundTransparency = currentTrans end
+	end
+end)
+UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then isSliding = false end end)
+
+MainFrame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 and not isSliding then
+		local pressStartTime = tick(); local hasMoved = false; dragStart = input.Position; startPos = MainFrame.Position
+		local moveConn; moveConn = UserInputService.InputChanged:Connect(function(moveInput)
+			if moveInput.UserInputType == Enum.UserInputType.MouseMovement then
+				local delta = moveInput.Position - dragStart
+				if delta.Magnitude > 5 then
+					hasMoved = true; dragging = true
+					MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+				end
+			end
+		end)
+		local endConn; endConn = input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				moveConn:Disconnect(); endConn:Disconnect()
+				if isMinimized and (tick() - pressStartTime) < 0.25 and not hasMoved then ToggleMinimize(false) end
+				dragging = false
+			end
+		end)
+	end
+end)
+
+CloseBtn.MouseButton1Click:Connect(function() if AntiBlockConn then AntiBlockConn:Disconnect() end; if antiBlockConn5 then antiBlockConn5:Disconnect() end; ScreenGui:Destroy() end)
+MinBtn.MouseButton1Click:Connect(function() ToggleMinimize(true) end)
+
+local emojis = {"👤", "👚", "🏃", "🧸", "🌌", "⭐"} -- Icon bintang untuk Tab 6
+for i, emoji in ipairs(emojis) do
+	local b = Instance.new("TextButton", Sidebar)
+	b.Size = UDim2.new(0, 35, 0, 35); b.BackgroundTransparency = 1; b.Text = emoji; b.TextSize = 20; b.TextColor3 = Color3.new(1, 1, 1)
+	b.MouseButton1Click:Connect(function()
+        -- Logika visibility untuk 6 Tab
+        Tab1Frame.Visible = (i == 1)
+        Tab2Frame.Visible = (i == 2)
+        Tab3Frame.Visible = (i == 3)
+        Tab4Frame.Visible = (i == 4)
+        Tab5Frame.Visible = (i == 5)
+        Tab6Frame.Visible = (i == 6) -- Sekarang Tab 6 bisa muncul
+    end)
+end
+
+-------------------------------------------------------------------
+-- INITIALIZATION
+-------------------------------------------------------------------
+local d1 = SafeRead(folderName1); if d1 then SavedOutfits1 = HttpService:JSONDecode(d1); UpdateListUI1() end
+local d2 = SafeRead(folderName2); if d2 then SavedOutfits2 = HttpService:JSONDecode(d2); UpdateListUI2() end
+local d3 = SafeRead(visualFileName3); if d3 then masterData3 = HttpService:JSONDecode(d3); UpdateListUI3() end
+RefreshPresets4(); RefreshPresets5()
+
+task.spawn(function() while true do if activeRun3 and currentAnims3 then local char = lp.Character; local animS = char and char:FindFirstChild("Animate")
+if animS then pcall(function() for name, id in pairs(currentAnims3) do local val = animS:FindFirstChild(name)
+if val then local a = val:FindFirstChildOfClass("Animation"); if a and a.AnimationId ~= id then a.AnimationId = id; StopAnims(char) end end end end) end end task.wait(1.5) end end)
+
+lp.CharacterAdded:Connect(function() task.wait(1.5); if LastAppliedID1 then CoreApply1(LastAppliedID1) end; if LastAppliedID2 then ChangeAvatarManual2(LastAppliedID2) end end)
+
+-------------------------------------------------------------------
+-- FINAL BRIDGE (PASTIKAN SEPERTI INI)
+-------------------------------------------------------------------
+Tab1_ApplyFunc = ApplyPreset1
+Tab2_ApplyFunc = ChangeAvatarManual2
+Tab3_ApplyFunc = _G.Tab3_ApplyFunc -- Menggunakan global yang sudah ada
+Tab4_ApplyFunc = _G.ToggleClothes4
+Tab5_ApplyFunc = ApplyPreset5
