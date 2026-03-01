@@ -35,7 +35,17 @@ end
 if CoreGui:FindFirstChild("ManualHider") then CoreGui.ManualHider:Destroy() end
 
 local ScreenGui = Instance.new("ScreenGui", CoreGui); ScreenGui.Name = "ManualHider"
-local Main = Instance.new("Frame", ScreenGui); Main.Size = UDim2.new(0, 180, 0, 110); Main.Position = UDim2.new(0.5, -90, 0.8, -55); Main.BackgroundColor3 = Color3.fromRGB(20, 20, 20); Instance.new("UICorner", Main)
+local Main = Instance.new("Frame", ScreenGui); 
+Main.Size = UDim2.new(0, 180, 0, 110); 
+
+-- PERUBAHAN DI SINI:
+-- AnchorPoint (0, 0.5) membuat titik tumpu di kiri tengah frame
+-- Position (0.02, 0, 0.3, 0) artinya 2% dari kiri dan 30% dari atas layar
+Main.AnchorPoint = Vector2.new(0, 0.5)
+Main.Position = UDim2.new(0.02, 0, 0.3, 0) 
+
+Main.BackgroundColor3 = Color3.fromRGB(20, 20, 20); 
+Instance.new("UICorner", Main)
 
 -------------------------------------------------------------------
 -- UI ELEMENTS
@@ -73,7 +83,6 @@ end)
 -------------------------------------------------------------------
 
 UserInputService.InputBegan:Connect(function(input, processed)
-    -- 'processed' memastikan script tidak jalan saat kamu sedang mengetik di chat
     if not processed and input.KeyCode == Enum.KeyCode.E then
         ToggleState()
     end
