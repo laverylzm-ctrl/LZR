@@ -1,0 +1,170 @@
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+local connections = {}
+local isLocked = false
+local isGembokLocked = false
+
+-- 1. Setup ScreenGui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ShiftLock_Pro_V4"
+ScreenGui.Parent = player:WaitForChild("PlayerGui")
+ScreenGui.ResetOnSpawn = false
+
+-------------------------------------------------------------------
+-- FUNGSI DRAGGING (Universal)
+-------------------------------------------------------------------
+local function makeDraggable(frame, targetInput)
+    local dragging, dragInput, dragStart, startPos
+    targetInput.InputBegan:Connect(function(input)
+        if isGembokLocked then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    targetInput.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+-------------------------------------------------------------------
+-- ELEMEN 1: TOMBOL UTAMA
+-------------------------------------------------------------------
+local Main = Instance.new("Frame", ScreenGui)
+Main.Size = UDim2.new(0, 100, 0, 100); Main.Position = UDim2.new(0.5, -50, 0.5, -50)
+Main.BackgroundColor3 = Color3.fromRGB(255, 0, 0); Main.BackgroundTransparency = 0.5
+Instance.new("UICorner", Main).CornerRadius = UDim.new(1, 0)
+local MainStroke = Instance.new("UIStroke", Main)
+MainStroke.Thickness = 3; MainStroke.Color = Color3.fromRGB(255, 0, 0)
+
+local ClickBtn = Instance.new("TextButton", Main)
+ClickBtn.Size = UDim2.new(1, 0, 1, 0); ClickBtn.BackgroundTransparency = 1
+ClickBtn.Text = "OFF [K]"; ClickBtn.TextColor3 = Color3.new(1,1,1); ClickBtn.Font = Enum.Font.GothamBold
+
+makeDraggable(Main, ClickBtn)
+
+-------------------------------------------------------------------
+-- ELEMEN 2: TOMBOL GEAR SETTING
+-------------------------------------------------------------------
+local SettingBtn = Instance.new("TextButton", ScreenGui)
+SettingBtn.Size = UDim2.new(0, 45, 0, 45); SettingBtn.Position = UDim2.new(0.5, 65, 0.5, -22)
+SettingBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35); SettingBtn.Text = "⚙️"; SettingBtn.TextSize = 22
+Instance.new("UICorner", SettingBtn).CornerRadius = UDim.new(1, 0)
+
+makeDraggable(SettingBtn, SettingBtn)
+
+-------------------------------------------------------------------
+-- ELEMEN 3: PANEL MENU & SLIDERS
+-------------------------------------------------------------------
+local Menu = Instance.new("Frame", ScreenGui)
+Menu.Size = UDim2.new(0, 220, 0, 200); Menu.Position = UDim2.new(0.5, 120, 0.5, -100)
+Menu.BackgroundColor3 = Color3.fromRGB(20, 20, 20); Menu.Visible = false; Menu.Active = true
+Instance.new("UICorner", Menu)
+
+local function createSlider(labelName, parent, yPos, callback)
+    local label = Instance.new("TextLabel", parent)
+    label.Text = labelName; label.Size = UDim2.new(1, 0, 0, 20); label.Position = UDim2.new(0, 0, 0, yPos)
+    label.BackgroundTransparency = 1; label.TextColor3 = Color3.new(1,1,1); label.Font = Enum.Font.Gotham; label.TextSize = 12
+
+    local bg = Instance.new("Frame", parent)
+    bg.Size = UDim2.new(0, 180, 0, 4); bg.Position = UDim2.new(0.5, -90, 0, yPos + 25)
+    bg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    
+    local fill = Instance.new("Frame", bg)
+    fill.Size = UDim2.new(0.5, 0, 1, 0); fill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    
+    local knob = Instance.new("TextButton", bg)
+    knob.Size = UDim2.new(0, 14, 0, 14); knob.Position = UDim2.new(0.5, -7, 0.5, -7)
+    knob.BackgroundColor3 = Color3.new(1,1,1); knob.Text = ""; Instance.new("UICorner", knob).CornerRadius = UDim.new(1,0)
+
+    local sliding = false
+    local function update()
+        local inputPos = UserInputService:GetMouseLocation().X
+        local pct = math.clamp((inputPos - bg.AbsolutePosition.X) / bg.AbsoluteSize.X, 0, 1)
+        knob.Position = UDim2.new(pct, -7, 0.5, -7)
+        fill.Size = UDim2.new(pct, 0, 1, 0)
+        callback(pct)
+    end
+    knob.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then sliding = true end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then sliding = false end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then update() end
+    end)
+end
+
+-- Slider Transparency
+createSlider("TRANSPARANSI", Menu, 15, function(pct)
+    Main.BackgroundTransparency = math.clamp(1 - pct, 0.1, 0.9)
+    MainStroke.Transparency = math.clamp(1 - pct, 0.1, 0.9)
+end)
+
+-- Slider Ukuran
+createSlider("UKURAN", Menu, 65, function(pct)
+    local val = 50 + (pct * 150)
+    Main.Size = UDim2.new(0, val, 0, val)
+end)
+
+-- Tombol Gembok & Close
+local GembokBtn = Instance.new("TextButton", Menu)
+GembokBtn.Size = UDim2.new(0, 180, 0, 30); GembokBtn.Position = UDim2.new(0.5, -90, 0, 115)
+GembokBtn.Text = "GEMBOK: OFF"; GembokBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); GembokBtn.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", GembokBtn)
+
+local ExitBtn = Instance.new("TextButton", Menu)
+ExitBtn.Size = UDim2.new(0, 180, 0, 30); ExitBtn.Position = UDim2.new(0.5, -90, 0, 155)
+ExitBtn.Text = "CLOSE SCRIPT"; ExitBtn.BackgroundColor3 = Color3.fromRGB(120, 0, 0); ExitBtn.TextColor3 = Color3.new(1,1,1)
+Instance.new("UICorner", ExitBtn)
+
+-------------------------------------------------------------------
+-- LOGIKA AKHIR
+-------------------------------------------------------------------
+SettingBtn.MouseButton2Click:Connect(function() end) -- Reserved
+SettingBtn.MouseButton1Click:Connect(function() Menu.Visible = not Menu.Visible end)
+
+GembokBtn.MouseButton1Click:Connect(function()
+    isGembokLocked = not isGembokLocked
+    GembokBtn.Text = isGembokLocked and "GEMBOK: ON" or "GEMBOK: OFF"
+    GembokBtn.BackgroundColor3 = isGembokLocked and Color3.fromRGB(200, 150, 0) or Color3.fromRGB(40, 40, 40)
+end)
+
+local function toggleShiftLock()
+    isLocked = not isLocked
+    if isLocked then
+        Main.BackgroundColor3 = Color3.fromRGB(0, 255, 0); MainStroke.Color = Color3.fromRGB(0, 255, 0)
+        ClickBtn.Text = "ON [K]"
+    else
+        Main.BackgroundColor3 = Color3.fromRGB(255, 0, 0); MainStroke.Color = Color3.fromRGB(255, 0, 0)
+        ClickBtn.Text = "OFF [K]"; UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    end
+end
+
+connections.Click = ClickBtn.MouseButton1Click:Connect(toggleShiftLock)
+connections.Key = UserInputService.InputBegan:Connect(function(i, gp) if not gp and i.KeyCode == Enum.KeyCode.K then toggleShiftLock() end end)
+connections.Loop = RunService.RenderStepped:Connect(function()
+    if isLocked then
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local _, y = workspace.CurrentCamera.CFrame:ToEulerAnglesYXZ()
+            player.Character.HumanoidRootPart.CFrame = CFrame.new(player.Character.HumanoidRootPart.Position) * CFrame.Angles(0, y, 0)
+        end
+    end
+end)
+
+ExitBtn.MouseButton1Click:Connect(function()
+    for _, c in pairs(connections) do c:Disconnect() end
+    ScreenGui:Destroy()
+end)
