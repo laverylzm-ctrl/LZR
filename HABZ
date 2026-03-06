@@ -38,9 +38,6 @@ local ScreenGui = Instance.new("ScreenGui", CoreGui); ScreenGui.Name = "ManualHi
 local Main = Instance.new("Frame", ScreenGui); 
 Main.Size = UDim2.new(0, 180, 0, 110); 
 
--- PERUBAHAN DI SINI:
--- AnchorPoint (0, 0.5) membuat titik tumpu di kiri tengah frame
--- Position (0.02, 0, 0.3, 0) artinya 2% dari kiri dan 30% dari atas layar
 Main.AnchorPoint = Vector2.new(0, 0.5)
 Main.Position = UDim2.new(0.02, 0, 0.3, 0) 
 
@@ -51,8 +48,23 @@ Instance.new("UICorner", Main)
 -- UI ELEMENTS
 -------------------------------------------------------------------
 
-local ToggleBtn = Instance.new("TextButton", Main); ToggleBtn.Size = UDim2.new(0.85, 0, 0, 40); ToggleBtn.Position = UDim2.new(0.075, 0, 0.15, 0); ToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); ToggleBtn.Text = "SWEEP HIDE [E]"; ToggleBtn.TextColor3 = Color3.new(1, 1, 1); ToggleBtn.Font = "SourceSansBold"; Instance.new("UICorner", ToggleBtn)
-local CloseBtn = Instance.new("TextButton", Main); CloseBtn.Size = UDim2.new(0.85, 0, 0, 25); CloseBtn.Position = UDim2.new(0.075, 0, 0.6, 5); CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50); CloseBtn.Text = "CLOSE & RESET"; CloseBtn.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", CloseBtn)
+-- Teks tombol sekarang menggunakan [F]
+local ToggleBtn = Instance.new("TextButton", Main); 
+ToggleBtn.Size = UDim2.new(0.85, 0, 0, 40); 
+ToggleBtn.Position = UDim2.new(0.075, 0, 0.15, 0); 
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); 
+ToggleBtn.Text = "SWEEP HIDE [F]"; 
+ToggleBtn.TextColor3 = Color3.new(1, 1, 1); 
+ToggleBtn.Font = "SourceSansBold"; 
+Instance.new("UICorner", ToggleBtn)
+
+local CloseBtn = Instance.new("TextButton", Main); 
+CloseBtn.Size = UDim2.new(0.85, 0, 0, 25); 
+CloseBtn.Position = UDim2.new(0.075, 0, 0.6, 5); 
+CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50); 
+CloseBtn.Text = "CLOSE & RESET"; 
+CloseBtn.TextColor3 = Color3.new(1, 1, 1); 
+Instance.new("UICorner", CloseBtn)
 
 -------------------------------------------------------------------
 -- FUNCTIONS
@@ -61,11 +73,11 @@ local CloseBtn = Instance.new("TextButton", Main); CloseBtn.Size = UDim2.new(0.8
 local function ToggleState()
     isHidden = not isHidden
     if isHidden then
-        ToggleBtn.Text = "SWEEP HIDE: ON"
+        ToggleBtn.Text = "SWEEP HIDE: ON [F]"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 50)
         SweepPlayers(false)
     else
-        ToggleBtn.Text = "SWEEP HIDE: OFF"
+        ToggleBtn.Text = "SWEEP HIDE: OFF [F]"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         SweepPlayers(true)
     end
@@ -79,11 +91,12 @@ CloseBtn.MouseButton1Click:Connect(function()
 end)
 
 -------------------------------------------------------------------
--- TOGGLE KEYBIND (E)
+-- TOGGLE KEYBIND (UBAH KE F)
 -------------------------------------------------------------------
 
 UserInputService.InputBegan:Connect(function(input, processed)
-    if not processed and input.KeyCode == Enum.KeyCode.E then
+    -- KeyCode sekarang menggunakan F
+    if not processed and input.KeyCode == Enum.KeyCode.F then
         ToggleState()
     end
 end)
