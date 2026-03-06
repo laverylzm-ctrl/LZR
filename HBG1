@@ -1,0 +1,86 @@
+-- Nama GUI agar tidak menumpuk
+local guiName = "TrampolinePro"
+if game.CoreGui:FindFirstChild(guiName) then
+    game.CoreGui[guiName]:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = guiName
+screenGui.Parent = game.CoreGui
+
+-- Main Button (On/Off)
+local mainButton = Instance.new("TextButton")
+mainButton.Size = UDim2.new(0, 180, 0, 50)
+mainButton.Position = UDim2.new(0, 10, 0, 10)
+mainButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+mainButton.Text = "Boost: OFF [R]"
+mainButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+mainButton.Font = Enum.Font.SourceSansBold
+mainButton.TextSize = 16
+mainButton.Parent = screenGui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 8)
+corner.Parent = mainButton
+
+-- Close Button
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.new(0, 25, 0, 25)
+closeButton.Position = UDim2.new(1, -30, 0, 5)
+closeButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+closeButton.Text = "X"
+closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeButton.Parent = mainButton
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(1, 0)
+closeCorner.Parent = closeButton
+
+local boosting = false
+local UserInputService = game:GetService("UserInputService")
+
+-- Fungsi Utama Toggle
+local function toggleBoost()
+    boosting = not boosting
+    if boosting then
+        mainButton.Text = "Boost: ON [R]"
+        mainButton.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+        
+        task.spawn(function()
+            while boosting do
+                local char = game.Players.LocalPlayer.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                
+                if root then
+                    -- CEK VELOCITY (Jika menyentuh trampolin)
+                    if root.Velocity.Y > 15 then 
+                        -- SETTING TINGGI DI SINI (1.5 = sedang, 2.0 = tinggi, 1.2 = rendah)
+                        local power = 1.5 
+                        root.Velocity = Vector3.new(root.Velocity.X, root.Velocity.Y * power, root.Velocity.Z)
+                        task.wait(0.5) 
+                    end
+                end
+                task.wait(0.05)
+            end
+        end)
+    else
+        mainButton.Text = "Boost: OFF [R]"
+        mainButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    end
+end
+
+-- Klik Tombol
+mainButton.MouseButton1Click:Connect(toggleBoost)
+
+-- Tombol Close
+closeButton.MouseButton1Click:Connect(function()
+    boosting = false
+    screenGui:Destroy()
+end)
+
+-- Keybind R
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.R then
+        toggleBoost()
+    end
+end)
