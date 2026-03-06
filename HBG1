@@ -1,86 +1,144 @@
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local lp = Players.LocalPlayer
+
 -- Nama GUI agar tidak menumpuk
-local guiName = "TrampolinePro"
-if game.CoreGui:FindFirstChild(guiName) then
-    game.CoreGui[guiName]:Destroy()
+local guiName = "TrampolineProV2"
+if CoreGui:FindFirstChild(guiName) then 
+    CoreGui[guiName]:Destroy() 
 end
 
+local boosting = false
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = guiName
-screenGui.Parent = game.CoreGui
+screenGui.Parent = CoreGui
 
--- Main Button (On/Off)
-local mainButton = Instance.new("TextButton")
-mainButton.Size = UDim2.new(0, 180, 0, 50)
-mainButton.Position = UDim2.new(0, 10, 0, 10)
-mainButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-mainButton.Text = "Boost: OFF [R]"
-mainButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-mainButton.Font = Enum.Font.SourceSansBold
-mainButton.TextSize = 16
-mainButton.Parent = screenGui
+-------------------------------------------------------------------
+-- UI SETUP (Pinterest Aesthetic Style)
+-------------------------------------------------------------------
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 8)
-corner.Parent = mainButton
+local Main = Instance.new("Frame", screenGui)
+Main.Size = UDim2.new(0, 180, 0, 110)
+Main.AnchorPoint = Vector2.new(0, 0.5)
+Main.Position = UDim2.new(0.02, 0, 0.3, 0) -- Posisi kiri tengah
+Main.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Main.BorderSizePixel = 0
 
--- Close Button
-local closeButton = Instance.new("TextButton")
-closeButton.Size = UDim2.new(0, 25, 0, 25)
-closeButton.Position = UDim2.new(1, -30, 0, 5)
-closeButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-closeButton.Text = "X"
-closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeButton.Parent = mainButton
+local mainCorner = Instance.new("UICorner", Main)
+mainCorner.CornerRadius = UDim.new(0, 10)
 
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(1, 0)
-closeCorner.Parent = closeButton
+-- Glow effect (Optional/Style)
+local stroke = Instance.new("UIStroke", Main)
+stroke.Color = Color3.fromRGB(40, 40, 40)
+stroke.Thickness = 2
 
-local boosting = false
-local UserInputService = game:GetService("UserInputService")
+-------------------------------------------------------------------
+-- UI ELEMENTS
+-------------------------------------------------------------------
 
--- Fungsi Utama Toggle
+local ToggleBtn = Instance.new("TextButton", Main)
+ToggleBtn.Size = UDim2.new(0.85, 0, 0, 45)
+ToggleBtn.Position = UDim2.new(0.075, 0, 0.12, 0)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+ToggleBtn.Text = "BOOST: OFF [E]"
+ToggleBtn.TextColor3 = Color3.new(1, 1, 1)
+ToggleBtn.Font = Enum.Font.SourceSansBold
+ToggleBtn.TextSize = 16
+Instance.new("UICorner", ToggleBtn)
+
+local CloseBtn = Instance.new("TextButton", Main)
+CloseBtn.Size = UDim2.new(0.85, 0, 0, 30)
+CloseBtn.Position = UDim2.new(0.075, 0, 0.6, 5)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+CloseBtn.Text = "STOP & CLOSE"
+CloseBtn.TextColor3 = Color3.new(1, 1, 1)
+CloseBtn.Font = Enum.Font.SourceSans
+CloseBtn.TextSize = 14
+Instance.new("UICorner", CloseBtn)
+
+-------------------------------------------------------------------
+-- LOGIC: TRAMPOLINE BOOST
+-------------------------------------------------------------------
+
 local function toggleBoost()
     boosting = not boosting
     if boosting then
-        mainButton.Text = "Boost: ON [R]"
-        mainButton.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+        ToggleBtn.Text = "BOOST: ON [E]"
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 50)
         
+        -- Task spawn agar looping tidak membekukan UI
         task.spawn(function()
             while boosting do
-                local char = game.Players.LocalPlayer.Character
+                local char = lp.Character
                 local root = char and char:FindFirstChild("HumanoidRootPart")
                 
                 if root then
-                    -- CEK VELOCITY (Jika menyentuh trampolin)
+                    -- Deteksi jika Velocity Y naik (sedang melompat/terpantul)
                     if root.Velocity.Y > 15 then 
-                        -- SETTING TINGGI DI SINI (1.5 = sedang, 2.0 = tinggi, 1.2 = rendah)
-                        local power = 1.5 
+                        local power = 1.5 -- Ubah angka ini untuk tinggi lompatan
                         root.Velocity = Vector3.new(root.Velocity.X, root.Velocity.Y * power, root.Velocity.Z)
-                        task.wait(0.5) 
+                        task.wait(0.5) -- Delay agar tidak double boost di udara
                     end
                 end
                 task.wait(0.05)
             end
         end)
     else
-        mainButton.Text = "Boost: OFF [R]"
-        mainButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        ToggleBtn.Text = "BOOST: OFF [E]"
+        ToggleBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     end
 end
 
--- Klik Tombol
-mainButton.MouseButton1Click:Connect(toggleBoost)
+-------------------------------------------------------------------
+-- EVENTS & DRAG LOGIC
+-------------------------------------------------------------------
 
--- Tombol Close
-closeButton.MouseButton1Click:Connect(function()
-    boosting = false
-    screenGui:Destroy()
+ToggleBtn.MouseButton1Click:Connect(toggleBoost)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    boosting = false -- Berhentikan loop boost
+    screenGui:Destroy() -- Hapus GUI
 end)
 
--- Keybind R
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.KeyCode == Enum.KeyCode.R then
+-- Keybind E
+UserInputService.InputBegan:Connect(function(input, processed)
+    if not processed and input.KeyCode == Enum.KeyCode.E then
         toggleBoost()
+    end
+end)
+
+-- Manual Dragging System (Support PC & Mobile)
+local dragging, dragInput, dragStart, startPos
+
+local function update(input)
+    local delta = input.Position - dragStart
+    Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+Main.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = Main.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+Main.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        update(input)
     end
 end)
