@@ -1,0 +1,448 @@
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local MarketplaceService = game:GetService("MarketplaceService")
+local RunService = game:GetService("RunService")
+local lp = Players.LocalPlayer
+
+-------------------------------------------------------------------
+-- DATA & SAVING LOGIC
+-------------------------------------------------------------------
+local presetsFileName = "XenoV9_Hybrid_Storage.json"
+local activeVisual = false
+local activeTargetVisual = false
+local targetPlayerName = ""
+local OriginalAssets = {}
+
+local function SaveOriginal()
+    local char = lp.Character or lp.CharacterAdded:Wait()
+    for _, v in pairs(char:GetChildren()) do
+        if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("BodyColors") then
+            table.insert(OriginalAssets, v:Clone())
+        end
+    end
+end
+SaveOriginal()
+
+local function LoadFile()
+    if isfile(presetsFileName) then 
+        local success, content = pcall(function() return readfile(presetsFileName) end)
+        return success and HttpService:JSONDecode(content) or {}
+    end
+    return {}
+end
+
+local function WriteFile(data)
+    writefile(presetsFileName, HttpService:JSONEncode(data))
+end
+
+-------------------------------------------------------------------
+-- UI HELPERS
+-------------------------------------------------------------------
+local function UpdateLabelName(idText, label, defaultName)
+    local id = tonumber(idText:match("%d+"))
+    if not id then label.Text = defaultName; label.TextColor3 = Color3.new(0.7,0.7,0.7) return end
+    task.spawn(function()
+        local success, info = pcall(function() return MarketplaceService:GetProductInfo(id) end)
+        if success and info then
+            label.Text = info.Name:sub(1,14)
+            label.TextColor3 = Color3.fromRGB(100, 200, 255)
+        end
+    end)
+end
+
+local function MakeDraggable(obj, target)
+    local dragging, dragStart, startPos
+    obj.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true; dragStart = input.Position; startPos = target.Position end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            target.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
+end
+
+-------------------------------------------------------------------
+-- AVATAR ENGINE
+-------------------------------------------------------------------
+local function AlignSmart(acc, char)
+    local handle = acc:FindFirstChild("Handle")
+    if not handle then return end
+    local att = handle:FindFirstChildOfClass("Attachment")
+    local targetPart, charAtt
+    if att then
+        for _, v in pairs(char:GetDescendants()) do
+            if v:IsA("Attachment") and v.Name == att.Name then charAtt = v; targetPart = v.Parent; break end
+        end
+    end
+    targetPart = targetPart or char:FindFirstChild("Head")
+    handle.CanCollide = false
+    acc.Parent = char
+    local weld = Instance.new("Weld", handle)
+    weld.Part0 = handle; weld.Part1 = targetPart
+    if att and charAtt then weld.C0 = att.CFrame; weld.C1 = charAtt.CFrame else weld.C1 = CFrame.new(0, 0, 0) end
+end
+
+-------------------------------------------------------------------
+-- UI SETUP
+-------------------------------------------------------------------
+if CoreGui:FindFirstChild("XenoV9Hybrid") then CoreGui.XenoV9Hybrid:Destroy() end
+local ScreenGui = Instance.new("ScreenGui", CoreGui); ScreenGui.Name = "XenoV9Hybrid"; ScreenGui.ResetOnSpawn = false
+local Main = Instance.new("Frame", ScreenGui); Main.Size = UDim2.new(0, 420, 0, 580); Main.Position = UDim2.new(0.5, -210, 0.5, -290); Main.BackgroundColor3 = Color3.fromRGB(15, 15, 15); Instance.new("UICorner", Main)
+local Header = Instance.new("Frame", Main); Header.Size = UDim2.new(1, 0, 0, 35); Header.BackgroundColor3 = Color3.fromRGB(30, 30, 30); Instance.new("UICorner", Header); MakeDraggable(Header, Main)
+local Title = Instance.new("TextLabel", Header); Title.Size = UDim2.new(1, -80, 1, 0); Title.Position = UDim2.new(0, 15, 0, 0); Title.Text = "XENO V9: HYBRID NEBULA"; Title.TextColor3 = Color3.new(1, 1, 1); Title.Font = "SourceSansBold"; Title.BackgroundTransparency = 1; Title.TextXAlignment = "Left"
+local CloseBtn = Instance.new("TextButton", Header); CloseBtn.Size = UDim2.new(0, 25, 0, 25); CloseBtn.Position = UDim2.new(1, -30, 0, 5); CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40); CloseBtn.Text = "X"; CloseBtn.TextColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", CloseBtn)
+
+local Scroll = Instance.new("ScrollingFrame", Main); Scroll.Size = UDim2.new(1, -10, 1, -45); Scroll.Position = UDim2.new(0, 5, 0, 40); Scroll.BackgroundTransparency = 1; Scroll.ScrollBarThickness = 4
+local Layout = Instance.new("UIListLayout", Scroll); Layout.Padding = UDim.new(0, 8); Layout.HorizontalAlignment = "Center"; Layout.SortOrder = Enum.SortOrder.LayoutOrder
+Layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() Scroll.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 20) end)
+
+-------------------------------------------------------------------
+-- TARGET SECTION
+-------------------------------------------------------------------
+local TargetPanel = Instance.new("Frame", Scroll); TargetPanel.Size = UDim2.new(0.95, 0, 0, 130); TargetPanel.BackgroundColor3 = Color3.fromRGB(20, 20, 20); TargetPanel.LayoutOrder = -20; Instance.new("UICorner", TargetPanel)
+local TargetTitle = Instance.new("TextLabel", TargetPanel); TargetTitle.Size = UDim2.new(1, 0, 0, 25); TargetTitle.Text = "PLAYER TARGET CONTROLLER"; TargetTitle.TextColor3 = Color3.fromRGB(0, 200, 255); TargetTitle.BackgroundTransparency = 1; TargetTitle.Font = "SourceSansBold"
+
+local TargetUserBox = Instance.new("TextBox", TargetPanel); TargetUserBox.Size = UDim2.new(0.9, 0, 0, 35); TargetUserBox.Position = UDim2.new(0.05, 0, 0, 30); TargetUserBox.PlaceholderText = "Target Username..."; TargetUserBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40); TargetUserBox.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", TargetUserBox)
+
+local TargetOnBtn = Instance.new("TextButton", TargetPanel); TargetOnBtn.Size = UDim2.new(0.43, 0, 0, 40); TargetOnBtn.Position = UDim2.new(0.05, 0, 0, 75); TargetOnBtn.Text = "TARGET: OFF"; TargetOnBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0); TargetOnBtn.TextColor3 = Color3.new(1,1,1); TargetOnBtn.Font = "SourceSansBold"; Instance.new("UICorner", TargetOnBtn)
+
+local TargetResetBtn = Instance.new("TextButton", TargetPanel); TargetResetBtn.Size = UDim2.new(0.43, 0, 0, 40); TargetResetBtn.Position = UDim2.new(0.52, 0, 0, 75); TargetResetBtn.Text = "RESET TARGET"; TargetResetBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60); TargetResetBtn.TextColor3 = Color3.new(1,1,1); TargetResetBtn.Font = "SourceSansBold"; Instance.new("UICorner", TargetResetBtn)
+
+-------------------------------------------------------------------
+-- INPUT BUILDER
+-------------------------------------------------------------------
+local function createInput(name, isSlot)
+    local container = Instance.new("Frame", Scroll); container.Size = UDim2.new(0.92, 0, 0, 52); container.BackgroundTransparency = 1; container.Name = name
+    local label = Instance.new("TextLabel", container); label.Size = UDim2.new(1, 0, 0, 18); label.Text = name; label.TextColor3 = Color3.new(0.7, 0.7, 0.7); label.BackgroundTransparency = 1; label.TextXAlignment = "Left"; label.TextSize = 12; label.Font = "SourceSansBold"
+    local inputRow = Instance.new("Frame", container); inputRow.Size = UDim2.new(1, 0, 0, 30); inputRow.Position = UDim2.new(0, 0, 0, 20); inputRow.BackgroundTransparency = 1; inputRow.Name = "InputRow"
+    local b = Instance.new("TextBox", inputRow); b.BackgroundColor3 = Color3.fromRGB(30, 30, 30); b.TextColor3 = Color3.new(1, 1, 1); b.PlaceholderText = "Asset ID..."; b.TextSize = 13; b.Text = ""; Instance.new("UICorner", b)
+    b.Size = UDim2.new(1, 0, 1, 0)
+    b:GetPropertyChangedSignal("Text"):Connect(function() UpdateLabelName(b.Text, label, name) end)
+    return b, container
+end
+
+local VisualBtn = Instance.new("TextButton", Scroll); VisualBtn.Size = UDim2.new(0.95, 0, 0, 40); VisualBtn.Text = "USE FOR SELF: OFF"; VisualBtn.BackgroundColor3 = Color3.fromRGB(150,0,0); VisualBtn.TextColor3 = Color3.new(1,1,1); VisualBtn.Font = "SourceSansBold"; Instance.new("UICorner", VisualBtn); VisualBtn.LayoutOrder = -10
+local ResetBtn = Instance.new("TextButton", Scroll); ResetBtn.Size = UDim2.new(0.95, 0, 0, 35); ResetBtn.Text = "RESTORE SELF (ORIGINAL)"; ResetBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 60); ResetBtn.TextColor3 = Color3.new(1,1,1); ResetBtn.Font = "SourceSansBold"; Instance.new("UICorner", ResetBtn); ResetBtn.LayoutOrder = 1000
+
+local inHead = createInput("Head ID", false); inHead.Parent.LayoutOrder = 1
+local inTorso = createInput("Torso ID", false); inTorso.Parent.LayoutOrder = 2
+local inRA = createInput("R-Arm ID", false); inRA.Parent.LayoutOrder = 3
+local inLA = createInput("L-Arm ID", false); inLA.Parent.LayoutOrder = 4
+local inRL = createInput("R-Leg ID", false); inRL.Parent.LayoutOrder = 5
+local inLL = createInput("L-Leg ID", false); inLL.Parent.LayoutOrder = 6
+
+local SlotInputs = {}
+for i = 1, 20 do local b, f = createInput("Slot "..i, true); f.LayoutOrder = 10 + i; table.insert(SlotInputs, b) end
+
+local CopyBtn = Instance.new("TextButton", Scroll); CopyBtn.Size = UDim2.new(0.95, 0, 0, 35); CopyBtn.Text = "COPY ALL IDS (STRICT RULES)"; CopyBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 180); CopyBtn.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", CopyBtn); CopyBtn.LayoutOrder = 1001
+local nameBox = Instance.new("TextBox", Scroll); nameBox.Size = UDim2.new(0.95, 0, 0, 35); nameBox.PlaceholderText = "Preset Name..."; nameBox.BackgroundColor3 = Color3.fromRGB(40,40,40); nameBox.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", nameBox); nameBox.LayoutOrder = 1002
+local SaveBtn = Instance.new("TextButton", Scroll); SaveBtn.Size = UDim2.new(0.95, 0, 0, 35); SaveBtn.Text = "SAVE PRESET"; SaveBtn.BackgroundColor3 = Color3.fromRGB(100, 0, 150); SaveBtn.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", SaveBtn); SaveBtn.LayoutOrder = 1003
+local PresetContainer = Instance.new("Frame", Scroll); PresetContainer.Size = UDim2.new(0.95, 0, 0, 0); PresetContainer.BackgroundTransparency = 1; PresetContainer.AutomaticSize = "Y"; PresetContainer.LayoutOrder = 1004; Instance.new("UIListLayout", PresetContainer).Padding = UDim.new(0,4)
+
+-------------------------------------------------------------------
+-- SHARED ENGINE LOGIC
+-------------------------------------------------------------------
+local function ApplyToChar(char)
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    pcall(function()
+        local d = hum:GetAppliedDescription()
+        d.Head = tonumber(inHead.Text) or d.Head; d.Torso = tonumber(inTorso.Text) or d.Torso
+        d.RightArm = tonumber(inRA.Text) or d.RightArm; d.LeftArm = tonumber(inLA.Text) or d.LeftArm
+        d.RightLeg = tonumber(inRL.Text) or d.RightLeg; d.LeftLeg = tonumber(inLL.Text) or d.LeftLeg
+        hum:ApplyDescriptionClientServer(d)
+        
+        for _, v in pairs(char:GetChildren()) do 
+            if (v:IsA("Accessory") and not v:FindFirstChild("IsNebula")) or v:IsA("Shirt") or v:IsA("Pants") then v:Destroy() end 
+        end
+        for _, box in pairs(SlotInputs) do
+            local id = tonumber(box.Text)
+            if id then
+                for _, obj in pairs(game:GetObjects("rbxassetid://"..id)) do
+                    local clone = obj:Clone(); Instance.new("BoolValue", clone).Name = "IsNebula"
+                    if clone:IsA("Accessory") then AlignSmart(clone, char) else clone.Parent = char end
+                end
+            end
+        end
+    end)
+end
+
+-------------------------------------------------------------------
+-- BUTTON CONNECTIONS
+-------------------------------------------------------------------
+
+-- SELF TOGGLE
+VisualBtn.MouseButton1Click:Connect(function()
+    activeVisual = not activeVisual
+    VisualBtn.Text = activeVisual and "USE FOR SELF: ON" or "USE FOR SELF: OFF"
+    VisualBtn.BackgroundColor3 = activeVisual and Color3.fromRGB(0, 150, 50) or Color3.fromRGB(150, 0, 0)
+    task.spawn(function()
+        while activeVisual and ScreenGui.Parent do
+            ApplyToChar(lp.Character)
+            task.wait(2.5)
+        end
+    end)
+end)
+
+-- SELF RESET
+ResetBtn.MouseButton1Click:Connect(function()
+    activeVisual = false
+    VisualBtn.Text = "USE FOR SELF: OFF"; VisualBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+    local hum = lp.Character:FindFirstChildOfClass("Humanoid")
+    if hum then
+        for _, v in pairs(lp.Character:GetChildren()) do 
+            if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") or v:FindFirstChild("IsNebula") then v:Destroy() end 
+        end
+        pcall(function() hum:ApplyDescriptionClientServer(Players:GetHumanoidDescriptionFromUserIdAsync(lp.UserId)) end)
+        task.wait(0.1)
+        for _, asset in pairs(OriginalAssets) do local c = asset:Clone(); if c:IsA("Accessory") then AlignSmart(c, lp.Character) else c.Parent = lp.Character end end
+    end
+end)
+
+-- TARGET TOGGLE
+TargetOnBtn.MouseButton1Click:Connect(function()
+    activeTargetVisual = not activeTargetVisual
+    targetPlayerName = TargetUserBox.Text
+    TargetOnBtn.Text = activeTargetVisual and "TARGET: ON" or "TARGET: OFF"
+    TargetOnBtn.BackgroundColor3 = activeTargetVisual and Color3.fromRGB(0, 150, 50) or Color3.fromRGB(150, 0, 0)
+    
+    if activeTargetVisual then
+        task.spawn(function()
+            while activeTargetVisual and ScreenGui.Parent do
+                local t = Players:FindFirstChild(targetPlayerName)
+                if t and t.Character then ApplyToChar(t.Character) end
+                task.wait(3.5)
+            end
+        end)
+    end
+end)
+
+-- TARGET RESET (FAKE RESPAWN EFFECT)
+TargetResetBtn.MouseButton1Click:Connect(function()
+    activeTargetVisual = false
+    TargetOnBtn.Text = "TARGET: OFF"; TargetOnBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+    
+    local t = Players:FindFirstChild(TargetUserBox.Text)
+    if t and t.Character then
+        local char = t.Character
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+        
+        if hum and root then
+            -- Efek Respawn: Sembunyikan karakter
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") or part:IsA("Decal") then part.Transparency = 1 end
+            end
+
+            -- Bersihkan Nebula & Baju
+            for _, v in pairs(char:GetChildren()) do
+                if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") or v:FindFirstChild("IsNebula") then
+                    v:Destroy()
+                end
+            end
+
+            -- Restore Visual Asli
+            pcall(function()
+                local originalDesc = Players:GetHumanoidDescriptionFromUserIdAsync(t.UserId)
+                hum:ApplyDescriptionClientServer(originalDesc)
+            end)
+
+            -- Force Refresh Engine
+            local oldParent = char.Parent
+            char.Parent = nil
+            task.wait(0.25) -- Jeda "Respawn"
+            char.Parent = oldParent
+
+            -- Tampilkan kembali karakter
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") or part:IsA("Decal") then
+                    part.Transparency = 0
+                end
+            end
+            root.Transparency = 1 -- RootPart tetap harus transparan
+        end
+    end
+end)
+
+-------------------------------------------------------------------
+-- SYSTEM LOGIC
+-------------------------------------------------------------------
+function RefreshPresets()
+    for _, v in pairs(PresetContainer:GetChildren()) do if v:IsA("Frame") then v:Destroy() end end
+    local data = LoadFile()
+    for name, content in pairs(data) do
+        local f = Instance.new("Frame", PresetContainer); f.Size = UDim2.new(1,0,0,30); f.BackgroundTransparency = 1
+        local l = Instance.new("TextButton", f); l.Size = UDim2.new(0.82,0,1,0); l.Text = "  "..name; l.BackgroundColor3 = Color3.fromRGB(35,35,35); l.TextColor3 = Color3.new(1,1,1); l.TextXAlignment = "Left"; l.Font = "SourceSansBold"; Instance.new("UICorner", l)
+        local d = Instance.new("TextButton", f); d.Size = UDim2.new(0,30,0,25); d.Position = UDim2.new(1,-35,0,2); d.Text = "X"; d.BackgroundColor3 = Color3.fromRGB(150,50,50); d.TextColor3 = Color3.new(1,1,1); Instance.new("UICorner", d)
+        l.MouseButton1Click:Connect(function()
+            inHead.Text = content.Body[1]; inTorso.Text = content.Body[2]; inRA.Text = content.Body[3]; inLA.Text = content.Body[4]; inRL.Text = content.Body[5]; inLL.Text = content.Body[6]
+            for i, v in ipairs(content.Slots) do if SlotInputs[i] then SlotInputs[i].Text = v end end
+        end)
+        d.MouseButton1Click:Connect(function() local c = LoadFile(); c[name] = nil; WriteFile(c); RefreshPresets() end)
+    end
+end
+
+SaveBtn.MouseButton1Click:Connect(function()
+    local name = nameBox.Text; if name == "" then return end
+    local data = { Body = {inHead.Text, inTorso.Text, inRA.Text, inLA.Text, inRL.Text, inLL.Text}, Slots = {} }
+    for i = 1, 20 do table.insert(data.Slots, SlotInputs[i].Text) end
+    local cur = LoadFile(); cur[name] = data; WriteFile(cur)
+    nameBox.Text = ""; RefreshPresets()
+end)
+
+CopyBtn.MouseButton1Click:Connect(function()
+    local hum = lp.Character:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    local desc = hum:GetAppliedDescription()
+    inHead.Text = tostring(desc.Head); inTorso.Text = tostring(desc.Torso); inRA.Text = tostring(desc.RightArm); inLA.Text = tostring(desc.LeftArm); inRL.Text = tostring(desc.RightLeg); inLL.Text = tostring(desc.LeftLeg)
+    local finalIDs = {}; local hash = {}
+    local priority = {"126853059538028", "101976716109786", "95850400713671", "82316297424206", "95714666435148"}
+    local accs = desc:GetAccessories(true)
+    local function add(id) local s = tostring(id); if s ~= "0" and not hash[s] then table.insert(finalIDs, s); hash[s] = true end end
+    for _, p in ipairs(priority) do if tostring(desc.Shirt) == p or tostring(desc.Pants) == p then add(p) end end
+    add(desc.Pants); add(desc.Shirt)
+    for _, a in pairs(accs) do add(a.AssetId) end
+    for i, id in ipairs(finalIDs) do if SlotInputs[i] then SlotInputs[i].Text = id end end
+end)
+
+CloseBtn.MouseButton1Click:Connect(function() activeVisual = false; activeTargetVisual = false; ScreenGui:Destroy() end)
+RefreshPresets()
+
+-------------------------------------------------------------------
+-- VARIABEL KONTROL & STATE (TAMBAHAN)
+-------------------------------------------------------------------
+local isMinimized = false
+local currentTrans = 0
+local isSliding = false
+local dragging = false
+local dragStart, startPos
+local originalSize = UDim2.new(0, 420, 0, 580) -- Ukuran asli menu Xeno
+
+-------------------------------------------------------------------
+-- TAMBAHAN ELEMEN UI (SLIDER & MINIMIZE)
+-------------------------------------------------------------------
+
+-- Tombol Minimize di Header
+local MinBtn = Instance.new("TextButton", Header)
+MinBtn.Size = UDim2.new(0, 30, 0, 30)
+MinBtn.Position = UDim2.new(1, -65, 0, 2)
+MinBtn.Text = "—"; MinBtn.TextColor3 = Color3.new(0.7, 0.7, 0.7)
+MinBtn.BackgroundTransparency = 1; MinBtn.Font = "SourceSansBold"; MinBtn.TextSize = 20
+
+-- Slider Transparansi Container (Taruh di dalam Scroll agar rapi)
+local SliderContainer = Instance.new("Frame", Scroll)
+SliderContainer.Size = UDim2.new(0.95, 0, 0, 40)
+SliderContainer.BackgroundTransparency = 1; SliderContainer.LayoutOrder = -100
+
+local SliderLabel = Instance.new("TextLabel", SliderContainer)
+SliderLabel.Size = UDim2.new(1, 0, 0, 15); SliderLabel.Text = "UI TRANSPARENCY"
+SliderLabel.TextColor3 = Color3.new(0.6, 0.6, 0.6); SliderLabel.BackgroundTransparency = 1
+SliderLabel.Font = "SourceSansBold"; SliderLabel.TextSize = 12
+
+local SliderFrame = Instance.new("Frame", SliderContainer)
+SliderFrame.Size = UDim2.new(0.8, 0, 0, 4); SliderFrame.Position = UDim2.new(0.5, 0, 0.7, 0)
+SliderFrame.AnchorPoint = Vector2.new(0.5, 0.5); SliderFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+Instance.new("UICorner", SliderFrame)
+
+local SliderBar = Instance.new("Frame", SliderFrame)
+SliderBar.Size = UDim2.new(0, 0, 1, 0); SliderBar.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
+Instance.new("UICorner", SliderBar)
+
+local SliderDot = Instance.new("Frame", SliderFrame)
+SliderDot.Size = UDim2.new(0, 12, 0, 12); SliderDot.Position = UDim2.new(0, 0, 0.5, 0)
+SliderDot.AnchorPoint = Vector2.new(0.5, 0.5); SliderDot.BackgroundColor3 = Color3.new(1, 1, 1)
+Instance.new("UICorner", SliderDot).CornerRadius = UDim.new(1, 0)
+
+-------------------------------------------------------------------
+-- LOGIKA FUNGSIONAL (IKUTI SOURCE CODE BARU ANDA)
+-------------------------------------------------------------------
+
+local function ApplyTransparency(val)
+    Main.BackgroundTransparency = val
+    Header.BackgroundTransparency = val
+    -- Pastikan panel target juga ikut transparan jika terlihat
+    TargetPanel.BackgroundTransparency = val
+end
+
+local function ToggleMinimize(state)
+    isMinimized = state
+    if isMinimized then
+        Scroll.Visible = false
+        Header.Visible = false
+        Main:TweenSize(UDim2.new(0, 35, 0, 35), "Out", "Quad", 0.3, true)
+        Main.UICorner.CornerRadius = UDim.new(1, 0) -- Jadi Bulat
+        ApplyTransparency(currentTrans) -- Saat minimize gunakan nilai transparansi slider
+    else
+        Main.UICorner.CornerRadius = UDim.new(0, 8) -- Kembali Kotak
+        Main:TweenSize(originalSize, "Out", "Quad", 0.3, true)
+        ApplyTransparency(0) -- Saat terbuka paksa tidak transparan agar mudah dibaca
+        task.wait(0.2)
+        Scroll.Visible = true
+        Header.Visible = true
+    end
+end
+
+-- Slider Input Logic
+SliderContainer.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
+        isSliding = true 
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if isSliding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local pos = math.clamp((input.Position.X - SliderFrame.AbsolutePosition.X) / SliderFrame.AbsoluteSize.X, 0, 1)
+        currentTrans = pos
+        SliderDot.Position = UDim2.new(pos, 0, 0.5, 0)
+        SliderBar.Size = UDim2.new(pos, 0, 1, 0)
+        if isMinimized then ApplyTransparency(currentTrans) end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then 
+        isSliding = false 
+    end
+end)
+
+-- Intelligent Drag/Restore (Mencegah lingkaran terbuka saat digeser)
+Main.InputBegan:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and not isSliding then
+        local pressStartTime = tick()
+        local hasMoved = false
+        dragStart = input.Position; startPos = Main.Position
+        
+        local moveConn
+        moveConn = UserInputService.InputChanged:Connect(function(moveInput)
+            if moveInput.UserInputType == Enum.UserInputType.MouseMovement or moveInput.UserInputType == Enum.UserInputType.Touch then
+                local delta = moveInput.Position - dragStart
+                if delta.Magnitude > 5 then
+                    hasMoved = true
+                    dragging = true
+                    Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+                end
+            end
+        end)
+
+        local endConn
+        endConn = input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                moveConn:Disconnect(); endConn:Disconnect()
+                local duration = tick() - pressStartTime
+                -- HANYA TERBUKA JIKA: Klik cepat (durasi < 0.25s) DAN tidak banyak bergerak
+                if isMinimized and duration < 0.25 and not hasMoved then
+                    ToggleMinimize(false)
+                end
+                dragging = false
+            end
+        end)
+    end
+end)
+
+MinBtn.MouseButton1Click:Connect(function() ToggleMinimize(true) end)
