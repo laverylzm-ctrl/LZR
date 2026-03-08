@@ -1,10 +1,8 @@
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 local lp = Players.LocalPlayer
 
--- Nama GUI agar tidak menumpuk
 local guiName = "TrampolineProV2"
 if CoreGui:FindFirstChild(guiName) then 
     CoreGui[guiName]:Destroy() 
@@ -16,36 +14,24 @@ screenGui.Name = guiName
 screenGui.Parent = CoreGui
 
 -------------------------------------------------------------------
--- UI SETUP (Pinterest Aesthetic Style)
+-- UI SETUP
 -------------------------------------------------------------------
 
 local Main = Instance.new("Frame", screenGui)
 Main.Size = UDim2.new(0, 180, 0, 110)
-Main.AnchorPoint = Vector2.new(0, 0.5)
-Main.Position = UDim2.new(0.02, 0, 0.3, 0) -- Posisi kiri tengah
+Main.Position = UDim2.new(0.02, 0, 0.3, 0) 
 Main.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 Main.BorderSizePixel = 0
-
-local mainCorner = Instance.new("UICorner", Main)
-mainCorner.CornerRadius = UDim.new(0, 10)
-
--- Glow effect (Optional/Style)
-local stroke = Instance.new("UIStroke", Main)
-stroke.Color = Color3.fromRGB(40, 40, 40)
-stroke.Thickness = 2
-
--------------------------------------------------------------------
--- UI ELEMENTS
--------------------------------------------------------------------
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
 
 local ToggleBtn = Instance.new("TextButton", Main)
 ToggleBtn.Size = UDim2.new(0.85, 0, 0, 45)
 ToggleBtn.Position = UDim2.new(0.075, 0, 0.12, 0)
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-ToggleBtn.Text = "BOOST: OFF [E]"
+ToggleBtn.Text = "BOOST: OFF [SHIFT]"
 ToggleBtn.TextColor3 = Color3.new(1, 1, 1)
 ToggleBtn.Font = Enum.Font.SourceSansBold
-ToggleBtn.TextSize = 16
+ToggleBtn.TextSize = 14
 Instance.new("UICorner", ToggleBtn)
 
 local CloseBtn = Instance.new("TextButton", Main)
@@ -59,86 +45,64 @@ CloseBtn.TextSize = 14
 Instance.new("UICorner", CloseBtn)
 
 -------------------------------------------------------------------
--- LOGIC: TRAMPOLINE BOOST
+-- LOGIC
 -------------------------------------------------------------------
 
 local function toggleBoost()
     boosting = not boosting
     if boosting then
-        ToggleBtn.Text = "BOOST: ON [E]"
+        ToggleBtn.Text = "BOOST: ON [SHIFT]"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 50)
         
-        -- Task spawn agar looping tidak membekukan UI
         task.spawn(function()
             while boosting do
                 local char = lp.Character
                 local root = char and char:FindFirstChild("HumanoidRootPart")
                 
-                if root then
-                    -- Deteksi jika Velocity Y naik (sedang melompat/terpantul)
-                    if root.Velocity.Y > 15 then 
-                        local power = 1.5 -- Ubah angka ini untuk tinggi lompatan
-                        root.Velocity = Vector3.new(root.Velocity.X, root.Velocity.Y * power, root.Velocity.Z)
-                        task.wait(0.5) -- Delay agar tidak double boost di udara
-                    end
+                if root and root.Velocity.Y > 15 then 
+                    root.Velocity = Vector3.new(root.Velocity.X, root.Velocity.Y * 1.5, root.Velocity.Z)
+                    task.wait(0.5) 
                 end
                 task.wait(0.05)
             end
         end)
     else
-        ToggleBtn.Text = "BOOST: OFF [E]"
+        ToggleBtn.Text = "BOOST: OFF [SHIFT]"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     end
 end
 
--------------------------------------------------------------------
--- EVENTS & DRAG LOGIC
--------------------------------------------------------------------
-
 ToggleBtn.MouseButton1Click:Connect(toggleBoost)
-
 CloseBtn.MouseButton1Click:Connect(function()
-    boosting = false -- Berhentikan loop boost
-    screenGui:Destroy() -- Hapus GUI
+    boosting = false 
+    screenGui:Destroy() 
 end)
 
--- Keybind E
+-- Input detection diperbaiki
 UserInputService.InputBegan:Connect(function(input, processed)
-    if not processed and input.KeyCode == Enum.KeyCode.E then
+    -- 'processed' dihapus agar tetap tembus meski sedang Shift Lock
+    if input.KeyCode == Enum.KeyCode.LeftShift then
         toggleBoost()
     end
 end)
 
--- Manual Dragging System (Support PC & Mobile)
+-------------------------------------------------------------------
+-- DRAG SYSTEM
+-------------------------------------------------------------------
 local dragging, dragInput, dragStart, startPos
-
-local function update(input)
-    local delta = input.Position - dragStart
-    Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
-
 Main.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = Main.Position
-
         input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
         end)
     end
 end)
-
-Main.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
 UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        update(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
 end)
