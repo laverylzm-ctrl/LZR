@@ -4,6 +4,7 @@ local UserInputService = game:GetService("UserInputService")
 local lp = Players.LocalPlayer
 
 local isHidden = false
+local isScriptActive = true -- Variabel kontrol status skrip
 
 -------------------------------------------------------------------
 -- LOGIC: MANUAL SWEEP
@@ -48,12 +49,11 @@ Instance.new("UICorner", Main)
 -- UI ELEMENTS
 -------------------------------------------------------------------
 
--- Teks tombol sekarang menggunakan [F]
 local ToggleBtn = Instance.new("TextButton", Main); 
 ToggleBtn.Size = UDim2.new(0.85, 0, 0, 40); 
 ToggleBtn.Position = UDim2.new(0.075, 0, 0.15, 0); 
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); 
-ToggleBtn.Text = "SWEEP HIDE [F]"; 
+ToggleBtn.Text = "SWEEP HIDE [E]"; 
 ToggleBtn.TextColor3 = Color3.new(1, 1, 1); 
 ToggleBtn.Font = "SourceSansBold"; 
 Instance.new("UICorner", ToggleBtn)
@@ -71,13 +71,15 @@ Instance.new("UICorner", CloseBtn)
 -------------------------------------------------------------------
 
 local function ToggleState()
+    if not isScriptActive then return end -- Cek jika skrip sudah dimatikan
+    
     isHidden = not isHidden
     if isHidden then
-        ToggleBtn.Text = "SWEEP HIDE: ON [F]"
+        ToggleBtn.Text = "SWEEP HIDE: ON [E]"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 50)
         SweepPlayers(false)
     else
-        ToggleBtn.Text = "SWEEP HIDE: OFF [F]"
+        ToggleBtn.Text = "SWEEP HIDE: OFF [E]"
         ToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         SweepPlayers(true)
     end
@@ -85,18 +87,25 @@ end
 
 ToggleBtn.MouseButton1Click:Connect(ToggleState)
 
+-- Fungsi Close sekarang mematikan seluruh logika
 CloseBtn.MouseButton1Click:Connect(function()
-    SweepPlayers(true)
-    ScreenGui:Destroy()
+    isScriptActive = false -- Mematikan akses fungsi
+    SweepPlayers(true)     -- Mengembalikan player jadi terlihat
+    ScreenGui:Destroy()    -- Menghapus UI
 end)
 
 -------------------------------------------------------------------
--- TOGGLE KEYBIND (UBAH KE F)
+-- TOGGLE KEYBIND (E)
 -------------------------------------------------------------------
 
-UserInputService.InputBegan:Connect(function(input, processed)
-    -- KeyCode sekarang menggunakan F
-    if not processed and input.KeyCode == Enum.KeyCode.F then
+local inputConnection
+inputConnection = UserInputService.InputBegan:Connect(function(input, processed)
+    if not isScriptActive then 
+        inputConnection:Disconnect() -- Memutus koneksi jika skrip mati
+        return 
+    end
+    
+    if not processed and input.KeyCode == Enum.KeyCode.E then
         ToggleState()
     end
 end)
@@ -108,11 +117,13 @@ end)
 local dragging, dragInput, dragStart, startPos
 
 local function update(input)
+    if not isScriptActive then return end
     local delta = input.Position - dragStart
     Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 end
 
 Main.InputBegan:Connect(function(input)
+    if not isScriptActive then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
@@ -127,12 +138,14 @@ Main.InputBegan:Connect(function(input)
 end)
 
 Main.InputChanged:Connect(function(input)
+    if not isScriptActive then return end
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
         dragInput = input
     end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
+    if not isScriptActive then return end
     if input == dragInput and dragging then
         update(input)
     end
